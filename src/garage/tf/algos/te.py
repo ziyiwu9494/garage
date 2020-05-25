@@ -14,6 +14,8 @@ class TaskEmbeddingWorker(DefaultWorker):
     and adds latent and latent infos to agent_info.
 
     Args:
+        encode_once_per_rollout (bool): If True, do one latent encoding every
+            rollout. Otherwise, do latent encoding every timestep.
         seed(int): The seed to use to intialize random number generators.
         max_path_length(int or float): The maximum length paths which will
             be sampled. Can be (floating point) infinity.
@@ -29,14 +31,18 @@ class TaskEmbeddingWorker(DefaultWorker):
 
     def __init__(
             self,
+            encode_once_per_rollout=True,
             *,  # Require passing by keyword, since everything's an int.
             seed,
             max_path_length,
             worker_number):
+        self._encode_once_per_rollout = encode_once_per_rollout
         self._latents = []
         self._tasks = []
         self._latent_infos = defaultdict(list)
-        self._z, self._t, self._latent_info = None, None, None
+        if self._encode_once_per_rollout:
+            self._z, self._latent_info = None, None
+        self._t = None
         super().__init__(seed=seed,
                          max_path_length=max_path_length,
                          worker_number=worker_number)
@@ -45,8 +51,9 @@ class TaskEmbeddingWorker(DefaultWorker):
         """Begin a new rollout."""
         # pylint: disable=protected-access
         self._t = self.env._active_task_one_hot()
-        self._z, self._latent_info = self.agent.get_latent(self._t)
-        self._z = self.agent.latent_space.flatten(self._z)
+        if self._encode_once_per_rollout:
+            self._z, self._latent_info = self.agent.get_latent(self._t)
+            self._z = self.agent.latent_space.flatten(self._z)
         super().start_rollout()
 
     def step_rollout(self):
@@ -58,15 +65,19 @@ class TaskEmbeddingWorker(DefaultWorker):
 
         """
         if self._path_length < self._max_path_length:
+            if self._encode_once_per_rollout:
+                z, latent_info = self._z, self._latent_info
+            else:
+                z, latent_info = self.agent.encoder.forward(self._t)
             a, agent_info = self.agent.get_action_given_latent(
-                self._prev_obs, self._z)
+                self._prev_obs, z)
             next_o, r, d, env_info = self.env.step(a)
             self._observations.append(self._prev_obs)
             self._rewards.append(r)
             self._actions.append(a)
             self._tasks.append(self._t)
-            self._latents.append(self._z)
-            for k, v in self._latent_info.items():
+            self._latents.append(z)
+            for k, v in latent_info.items():
                 self._latent_infos[k].append(v)
             for k, v in agent_info.items():
                 self._agent_infos[k].append(v)
