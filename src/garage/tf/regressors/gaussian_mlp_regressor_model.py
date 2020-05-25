@@ -3,10 +3,10 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
-from garage.tf.models import GaussianMLPModel
+from garage.tf.models import GaussianMLPModel2
 
 
-class GaussianMLPRegressorModel(GaussianMLPModel):
+class GaussianMLPRegressorModel(GaussianMLPModel2):
     """GaussianMLPRegressor based on garage.tf.models.Model class.
 
     This class can be used to perform regression by fitting a Gaussian

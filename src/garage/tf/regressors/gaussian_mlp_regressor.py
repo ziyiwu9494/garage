@@ -2,6 +2,7 @@
 from dowel import tabular
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 from garage.tf.misc import tensor_utils
 from garage.tf.optimizers import LbfgsOptimizer, PenaltyLbfgsOptimizer
