@@ -68,9 +68,10 @@ def ppo_pendulum(ctxt=None, seed=1):
                 max_epochs=10,
             ),
             stop_entropy_gradient=True,
-            entropy_method='max',
-            policy_ent_coeff=0.02,
-            center_adv=False,
+            use_neg_logli_entropy=True,
+            # entropy_method='max',
+            # policy_ent_coeff=0.02,
+            # center_adv=False,
         )
 
         runner.setup(algo, env)

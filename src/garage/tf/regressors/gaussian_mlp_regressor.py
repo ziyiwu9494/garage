@@ -138,10 +138,10 @@ class GaussianMLPRegressor(StochasticRegressor):
         input_var = tf.compat.v1.placeholder(tf.float32,
                                              shape=(None, ) +
                                              self._input_shape)
+        self._old_model.build(input_var)
 
         with tf.compat.v1.variable_scope(self._variable_scope):
             self.model.build(input_var)
-            self._old_model.build(input_var)
 
             ys_var = tf.compat.v1.placeholder(dtype=tf.float32,
                                               name='ys',
@@ -149,22 +149,23 @@ class GaussianMLPRegressor(StochasticRegressor):
 
             y_mean_var = self.model.networks['default'].y_mean
             y_std_var = self.model.networks['default'].y_std
-            means_var = self.model.networks['default'].true_dist.loc
+            means_var = self.model.networks['default'].mean
 
             normalized_means_var = self.model.networks[
-                'default'].normalized_dist.loc
-            normalized_log_stds_var = tf.math.log(self.model.networks[
-                'default'].normalized_dist.stddev())
+                'default'].normalized_mean
+            normalized_log_stds_var = self.model.networks[
+                'default'].normalized_log_std
 
             normalized_ys_var = (ys_var - y_mean_var) / y_std_var
 
-            mean_kl = tf.reduce_mean(
-                self._old_model.networks['default'].normalized_dist.kl_divergence(
-                self.model.networks['default'].normalized_dist))
+            old_normalized_dist = self._old_model.networks[
+                'default'].normalized_dist
+            normalized_dist = self.model.networks['default'].normalized_dist
 
-            loss = -tf.reduce_mean(
-                self.model.networks['default'].normalized_dist.log_prob(
-                    normalized_ys_var))
+            mean_kl = tf.reduce_mean(
+                old_normalized_dist.kl_divergence(normalized_dist))
+
+            loss = -tf.reduce_mean(normalized_dist.log_prob(normalized_ys_var))
 
             self._f_predict = tensor_utils.compile_function([input_var],
                                                             means_var)
@@ -243,25 +244,6 @@ class GaussianMLPRegressor(StochasticRegressor):
         """
         return self._f_predict(xs)
 
-    # def log_likelihood_sym(self, x_var, y_var, name=None):
-    #     """Create a symbolic graph of the log likelihood.
-
-    #     Args:
-    #         x_var (tf.Tensor): Input tf.Tensor for the input data.
-    #         y_var (tf.Tensor): Input tf.Tensor for the label of data.
-    #         name (str): Name of the new graph.
-
-    #     Return:
-    #         tf.Tensor: Output of the symbolic log-likelihood graph.
-
-    #     """
-    #     params = self.dist_info_sym(x_var, name=name)
-    #     means_var = params['mean']
-    #     log_stds_var = params['log_std']
-
-    #     return self.model.networks[name].dist.log_likelihood_sym(
-    #         y_var, dict(mean=means_var, log_std=log_stds_var))
-
     @property
     def vectorized(self):
         """bool: If this module supports vectorization input."""
@@ -270,30 +252,7 @@ class GaussianMLPRegressor(StochasticRegressor):
     @property
     def distribution(self):
         """garage.tf.distributions.DiagonalGaussian: Distribution."""
-        return self.model.networks['default'].true_dist
-
-    # def dist_info_sym(self, input_var, state_info_vars=None, name='default'):
-    #     """Create a symbolic graph of the distribution parameters.
-
-    #     Args:
-    #         input_var (tf.Tensor): tf.Tensor of the input data.
-    #         state_info_vars (dict): a dictionary whose values should contain
-    #             information about the state of the policy at the time it
-    #             received the input.
-    #         name (str): Name of the new graph.
-
-    #     Return:
-    #         dict[tf.Tensor]: Outputs of the symbolic distribution parameter
-    #             graph.
-
-    #     """
-    #     with tf.compat.v1.variable_scope(self._variable_scope):
-    #         self.model.build(input_var, name=name)
-
-    #     means_var = self.model.networks[name].means
-    #     log_stds_var = self.model.networks[name].log_stds
-
-    #     return dict(mean=means_var, log_std=log_stds_var)
+        return self.model.networks['default'].dist
 
     def __getstate__(self):
         """Object.__getstate__.

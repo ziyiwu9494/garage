@@ -124,12 +124,9 @@ class GaussianMLPRegressorModel(GaussianMLPModel):
             list[str]: List of key(str) for the network outputs.
 
         """
-        # return [
-        #     'means', 'log_stds', 'std_param', 'normalized_means',
-        #     'normalized_log_stds', 'x_mean', 'x_std', 'y_mean', 'y_std', 'dist'
-        # ]
         return [
-            'normalized_dist', 'true_dist', 'x_mean', 'x_std', 'y_mean', 'y_std'
+            'normalized_dist', 'normalized_mean', 'normalized_log_std', 'dist',
+            'mean', 'log_std', 'x_mean', 'x_std', 'y_mean', 'y_std'
         ]
 
     def _build(self, state_input, name=None):
@@ -142,16 +139,16 @@ class GaussianMLPRegressorModel(GaussianMLPModel):
                 garage.tf.models.Sequential.
 
         Return:
-            tf.Tensor: Mean.
-            tf.Tensor: Parameterized log_std.
-            tf.Tensor: log_std.
+            tfp.distributions.MultivariateNormalDiag: Normlizaed distribution.
             tf.Tensor: Normalized mean.
             tf.Tensor: Normalized log_std.
+            tfp.distributions.MultivariateNormalDiag: Vanilla distribution.
+            tf.Tensor: Vanilla mean.
+            tf.Tensor: Vanilla log_std.
             tf.Tensor: Mean for data.
             tf.Tensor: log_std for data.
             tf.Tensor: Mean for label.
             tf.Tensor: log_std for label.
-            garage.tf.distributions.DiagonalGaussian: Policy distribution.
 
         """
         with tf.compat.v1.variable_scope('normalized_vars'):
@@ -182,20 +179,29 @@ class GaussianMLPRegressorModel(GaussianMLPModel):
 
         normalized_xs_var = (state_input - x_mean_var) / x_std_var
 
-        normalized_dist = super()._build(normalized_xs_var)
+        _, normalized_dist_mean, normalized_dist_log_std = super()._build(
+            normalized_xs_var)
+
+        # Since regressor expects [N, *dims], we need to squeeze the extra
+        # dimension
+        normalized_dist_log_std = tf.squeeze(normalized_dist_log_std, 1)
+
         with tf.name_scope('mean_network'):
-            means_var = normalized_dist.loc * y_std_var + y_mean_var
+            means_var = normalized_dist_mean * y_std_var + y_mean_var
 
         with tf.name_scope('std_network'):
-            log_std_var = tf.squeeze(normalized_dist.stddev(), axis=1)
-            log_stds_var = tf.math.log(log_std_var) + tf.math.log(y_std_var)
+            log_stds_var = normalized_dist_log_std + tf.math.log(y_std_var)
 
-        return (normalized_dist, tfp.distributions.MultivariateNormalDiag(
-            loc=means_var, scale_diag=tf.exp(log_stds_var)), x_mean_var, x_std_var, y_mean_var,
-                y_std_var)
-        # return (means_var, log_stds_var, std_param, normalized_mean,
-        #         normalized_log_std, x_mean_var, x_std_var, y_mean_var,
-        #         y_std_var, dist)
+        normalized_dist = tfp.distributions.MultivariateNormalDiag(
+            loc=normalized_dist_mean,
+            scale_diag=tf.exp(normalized_dist_log_std))
+
+        vanilla_dist = tfp.distributions.MultivariateNormalDiag(
+            loc=means_var, scale_diag=tf.exp(log_stds_var))
+
+        return (normalized_dist, normalized_dist_mean, normalized_dist_log_std,
+                vanilla_dist, means_var, log_stds_var, x_mean_var, x_std_var,
+                y_mean_var, y_std_var)
 
     def clone(self, name):
         """Return a clone of the model.

@@ -148,6 +148,15 @@ class GaussianMLPModel(Model):
                              "'softplus' but got {}".format(
                                  self._std_parameterization))
 
+    def network_output_spec(self):
+        """Network output spec.
+
+        Return:
+            list[str]: List of key(str) for the network outputs.
+
+        """
+        return ['dist', 'mean', 'log_std']
+
     # pylint: disable=arguments-differ
     def _build(self, state_input, name=None):
         """Build model.
@@ -159,7 +168,9 @@ class GaussianMLPModel(Model):
                 garage.tf.models.Sequential.
 
         Returns:
-            tfp.distributions.MultivariateNormalDiag: Distribution.
+            tfp.distributions.MultivariateNormalDiag: Distribution object.
+            tf.Tensor: mean.
+            tf.Tensor: log_stds.
 
         """
         del name
@@ -248,4 +259,5 @@ class GaussianMLPModel(Model):
                 log_std_var = tf.math.log(tf.math.log(1. + tf.exp(std_param)))
 
         return tfp.distributions.MultivariateNormalDiag(
-            loc=mean_var, scale_diag=tf.exp(log_std_var))
+            loc=mean_var,
+            scale_diag=tf.exp(log_std_var)), mean_var, log_std_var
