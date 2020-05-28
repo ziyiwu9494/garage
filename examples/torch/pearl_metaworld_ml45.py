@@ -19,6 +19,7 @@ import garage.torch.utils as tu
 
 
 @click.command()
+@click.option('--seed', default=None)
 @click.option('--num_epochs', default=1000)
 @click.option('--num_train_tasks', default=45)
 @click.option('--num_test_tasks', default=5)
@@ -90,7 +91,8 @@ def pearl_metaworld_ml45(ctxt=None,
         use_gpu (bool): Whether or not to use GPU for training.
 
     """
-    set_seed(seed)
+    if seed is not None:
+        set_seed(seed)
     encoder_hidden_sizes = (encoder_hidden_size, encoder_hidden_size,
                             encoder_hidden_size)
     # create multi-task environment and sample tasks
