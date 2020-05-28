@@ -32,6 +32,7 @@ import garage.torch.utils as tu
 @click.option('--embedding_batch_size', default=64)
 @click.option('--embedding_mini_batch_size', default=64)
 @click.option('--max_path_length', default=150)
+@click.option('--use_gpu', default=False)
 @wrap_experiment
 def pearl_metaworld_ml45(ctxt=None,
                          seed=1,
