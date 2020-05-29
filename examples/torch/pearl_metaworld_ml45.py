@@ -19,6 +19,7 @@ import garage.torch.utils as tu
 
 
 @click.command()
+@click.option('--seed', default=1)
 @click.option('--num_epochs', default=1000)
 @click.option('--num_train_tasks', default=45)
 @click.option('--num_test_tasks', default=5)
