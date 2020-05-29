@@ -150,7 +150,7 @@ class GaussianMLPRegressor2(StochasticRegressor):
 
             y_mean_var = self.model.networks['default'].y_mean
             y_std_var = self.model.networks['default'].y_std
-            means_var = self.model.networks['default'].true_mean
+            means_var = self.model.networks['default'].mean
 
             normalized_means_var = self.model.networks[
                 'default'].normalized_mean
@@ -159,11 +159,8 @@ class GaussianMLPRegressor2(StochasticRegressor):
 
             normalized_ys_var = (ys_var - y_mean_var) / y_std_var
 
-            old_normalized_dist = tfp.distributions.MultivariateNormalDiag(
-                loc=self._old_model.networks['default'].normalized_mean, scale_diag=tf.exp(
-                    self._old_model.networks['default'].normalized_log_std))
-            normalized_dist = tfp.distributions.MultivariateNormalDiag(
-                loc=normalized_means_var, scale_diag=tf.exp(normalized_log_stds_var))
+            old_normalized_dist = self._old_model.networks['default'].normalized_dist
+            normalized_dist = self.model.networks['default'].normalized_dist
 
             mean_kl = tf.reduce_mean(
                 old_normalized_dist.kl_divergence(normalized_dist))

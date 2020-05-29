@@ -7,7 +7,8 @@ from garage.tf.models import GaussianMLPModel
 
 
 class GaussianMLPRegressorModel2(GaussianMLPModel):
-    """GaussianMLPRegressor based on garage.tf.models.Model class.
+    """
+    GaussianMLPRegressor based on garage.tf.models.Model class.
 
     This class can be used to perform regression by fitting a Gaussian
     distribution to the outputs.
@@ -50,72 +51,24 @@ class GaussianMLPRegressorModel2(GaussianMLPModel):
             to avoid numerical issues.
         max_std (float): If not None, the std is at most the value of max_std,
             to avoid numerical issues.
-        std_hidden_nonlinearity (callable): Nonlinearity for each hidden layer
-            in the std network.
-        std_hidden_w_init (callable): Initializer function for the weight
-            of intermediate dense layer(s) in the std network.
-        std_hidden_b_init (callable): Initializer function for the bias
-            of intermediate dense layer(s) in the std network.
-        std_output_nonlinearity (callable): Activation function for output
-            dense layer in the std network. It should return a tf.Tensor. Set
-            it to None to maintain a linear activation.
-        std_output_w_init (callable): Initializer function for the weight
-            of output dense layer(s) in the std network.
-        std_parameterization (str): How the std should be parametrized. There
-            are two options:
-            - exp: the logarithm of the std will be stored, and applied a
-               exponential transformation
-            - softplus: the std will be computed as log(1+exp(x))
+        std_hidden_nonlinearity: Nonlinearity for each hidden layer in
+            the std network.
+        std_output_nonlinearity: Nonlinearity for output layer in
+            the std network.
+        std_parametrization (str): How the std should be parametrized. There
+            are a few options:
+        - exp: the logarithm of the std will be stored, and applied a
+            exponential transformation
+        - softplus: the std will be computed as log(1+exp(x))
         layer_normalization (bool): Bool for using layer normalization or not.
-
     """
 
     def __init__(self,
                  input_shape,
                  output_dim,
                  name='GaussianMLPRegressorModel',
-                 hidden_sizes=(32, 32),
-                 hidden_nonlinearity=tf.nn.tanh,
-                 hidden_w_init=tf.initializers.glorot_uniform(),
-                 hidden_b_init=tf.zeros_initializer(),
-                 output_nonlinearity=None,
-                 output_w_init=tf.initializers.glorot_uniform(),
-                 output_b_init=tf.zeros_initializer(),
-                 learn_std=True,
-                 adaptive_std=False,
-                 std_share_network=False,
-                 init_std=1.0,
-                 min_std=1e-6,
-                 max_std=None,
-                 std_hidden_sizes=(32, 32),
-                 std_hidden_nonlinearity=tf.nn.tanh,
-                 std_hidden_w_init=tf.initializers.glorot_uniform(),
-                 std_hidden_b_init=tf.zeros_initializer(),
-                 std_output_nonlinearity=None,
-                 std_output_w_init=tf.initializers.glorot_uniform(),
-                 std_parameterization='exp',
-                 layer_normalization=False):
-        super().__init__(output_dim=output_dim,
-                         name=name,
-                         hidden_sizes=hidden_sizes,
-                         hidden_nonlinearity=hidden_nonlinearity,
-                         hidden_w_init=hidden_w_init,
-                         hidden_b_init=hidden_b_init,
-                         output_nonlinearity=output_nonlinearity,
-                         output_w_init=output_w_init,
-                         output_b_init=output_b_init,
-                         learn_std=learn_std,
-                         adaptive_std=adaptive_std,
-                         std_share_network=std_share_network,
-                         init_std=init_std,
-                         min_std=min_std,
-                         max_std=max_std,
-                         std_hidden_sizes=std_hidden_sizes,
-                         std_hidden_nonlinearity=std_hidden_nonlinearity,
-                         std_output_nonlinearity=std_output_nonlinearity,
-                         std_parameterization=std_parameterization,
-                         layer_normalization=layer_normalization,
-                         return_distribution=False)
+                 **kwargs):
+        super().__init__(output_dim=output_dim, name=name, **kwargs)
         self._input_shape = input_shape
 
     def network_output_spec(self):
@@ -126,7 +79,8 @@ class GaussianMLPRegressorModel2(GaussianMLPModel):
 
         """
         return [
-            'normalized_mean', 'normalized_log_std', 'true_mean', 'true_log_std', 'x_mean', 'x_std', 'y_mean', 'y_std'
+            'normalized_dist', 'normalized_mean', 'normalized_log_std', 'dist',
+            'mean', 'log_std', 'x_mean', 'x_std', 'y_mean', 'y_std'
         ]
 
     def _build(self, state_input, name=None):
@@ -139,16 +93,16 @@ class GaussianMLPRegressorModel2(GaussianMLPModel):
                 garage.tf.models.Sequential.
 
         Return:
-            tf.Tensor: Mean.
-            tf.Tensor: Parameterized log_std.
-            tf.Tensor: log_std.
+            tfp.distributions.MultivariateNormalDiag: Normlizaed distribution.
             tf.Tensor: Normalized mean.
             tf.Tensor: Normalized log_std.
+            tfp.distributions.MultivariateNormalDiag: Vanilla distribution.
+            tf.Tensor: Vanilla mean.
+            tf.Tensor: Vanilla log_std.
             tf.Tensor: Mean for data.
             tf.Tensor: log_std for data.
             tf.Tensor: Mean for label.
             tf.Tensor: log_std for label.
-            garage.tf.distributions.DiagonalGaussian: Policy distribution.
 
         """
         with tf.compat.v1.variable_scope('normalized_vars'):
@@ -179,15 +133,29 @@ class GaussianMLPRegressorModel2(GaussianMLPModel):
 
         normalized_xs_var = (state_input - x_mean_var) / x_std_var
 
-        normalized_dist_mean, normalized_dist_log_std = super()._build(normalized_xs_var)
+        _, normalized_dist_mean, normalized_dist_log_std = super()._build(
+            normalized_xs_var)
+
+        # Since regressor expects [N, *dims], we need to squeeze the extra
+        # dimension
+        normalized_dist_log_std = tf.squeeze(normalized_dist_log_std, 1)
+
         with tf.name_scope('mean_network'):
             means_var = normalized_dist_mean * y_std_var + y_mean_var
 
         with tf.name_scope('std_network'):
             log_stds_var = normalized_dist_log_std + tf.math.log(y_std_var)
 
-        return (normalized_dist_mean, normalized_dist_log_std, means_var, log_stds_var, x_mean_var, x_std_var, y_mean_var,
-                y_std_var)
+        normalized_dist = tfp.distributions.MultivariateNormalDiag(
+            loc=normalized_dist_mean,
+            scale_diag=tf.exp(normalized_dist_log_std))
+
+        vanilla_dist = tfp.distributions.MultivariateNormalDiag(
+            loc=means_var, scale_diag=tf.exp(log_stds_var))
+
+        return (normalized_dist, normalized_dist_mean, normalized_dist_log_std,
+                vanilla_dist, means_var, log_stds_var, x_mean_var, x_std_var,
+                y_mean_var, y_std_var)
 
     def clone(self, name):
         """Return a clone of the model.

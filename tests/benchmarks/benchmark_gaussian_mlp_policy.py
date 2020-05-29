@@ -48,7 +48,7 @@ def test_benchmark_gaussian_mlp_policy():
     for task in categorical_tasks:
         env_id = task
         env = gym.make(env_id)
-        trials = 1
+        trials = 3
         seeds = random.sample(range(100), trials)
 
         task_dir = osp.join(benchmark_dir, env_id)
