@@ -21,10 +21,11 @@ from garage.tf.policies import GaussianGRUPolicy
 @click.option('--seed', default=1)
 @click.option('--max_path_length', default=150)
 @click.option('--meta_batch_size', default=50)
+@click.option('--n_exploration_traj', default=10)
 @click.option('--n_epochs', default=1500)
 @click.option('--episode_per_task', default=10)
 @wrap_experiment
-def rl2_ppo_metaworld_ml45(ctxt, seed, max_path_length, meta_batch_size,
+def rl2_ppo_metaworld_ml45(ctxt, seed, max_path_length, meta_batch_size, n_exploration_traj,
                            n_epochs, episode_per_task):
     """Train PPO with ML45 environment.
 
@@ -66,7 +67,7 @@ def rl2_ppo_metaworld_ml45(ctxt, seed, max_path_length, meta_batch_size,
         test_tasks = task_sampler.EnvPoolSampler(ml45_test_envs)
 
         meta_evaluator = MetaEvaluator(test_task_sampler=test_tasks,
-                                       n_exploration_traj=10,
+                                       n_exploration_traj=n_exploration_traj,
                                        n_test_rollouts=10,
                                        max_path_length=max_path_length,
                                        n_test_tasks=5)

@@ -15,6 +15,8 @@ from garage.sampler.sampler_deprecated import BaseSampler
 from garage.sampler.default_worker import DefaultWorker  # noqa: I100
 from garage.sampler.worker_factory import WorkerFactory
 
+from memory_profiler import profile
+
 
 class ExperimentStats:
     # pylint: disable=too-few-public-methods
@@ -447,6 +449,7 @@ class LocalRunner:
             if pause_for_plot:
                 input('Plotting evaluation run: Press Enter to " "continue...')
 
+    @profile
     def train(self,
               n_epochs,
               batch_size=None,

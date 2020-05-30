@@ -92,12 +92,15 @@ class MetaEvaluator:
                 envs=self._test_task_sampler.sample(1))
         for env_up in self._test_task_sampler.sample(self._n_test_tasks):
             policy = algo.get_exploration_policy()
-            traj = TrajectoryBatch.concatenate(*[
-                self._test_sampler.obtain_samples(self._eval_itr, 1, policy,
-                                                  env_up)
-                for _ in range(self._n_exploration_traj)
-            ])
-            adapted_policy = algo.adapt_policy(policy, traj)
+            if self._n_exploration_traj > 0:
+                traj = TrajectoryBatch.concatenate(*[
+                    self._test_sampler.obtain_samples(self._eval_itr, 1, policy,
+                                                      env_up)
+                    for _ in range(self._n_exploration_traj)
+                ])
+                adapted_policy = algo.adapt_policy(policy, traj)
+            else:
+                adapted_policy = policy
             adapted_traj = self._test_sampler.obtain_samples(
                 self._eval_itr, test_rollouts_per_task * self._max_path_length,
                 adapted_policy)

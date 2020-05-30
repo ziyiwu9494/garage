@@ -5,6 +5,8 @@ from garage import TrajectoryBatch
 from garage.sampler.sampler import Sampler
 from garage.sampler.env_update import ExistingEnvUpdate
 
+from memory_profiler import profile
+
 
 class LocalSampler(Sampler):
     """Sampler that runs workers in the main process.
@@ -128,6 +130,7 @@ class LocalSampler(Sampler):
                 if completed_samples >= num_samples:
                     return TrajectoryBatch.concatenate(*batches)
 
+    @profile
     def obtain_exact_trajectories(self,
                                   n_traj_per_worker,
                                   agent_update,
