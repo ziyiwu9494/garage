@@ -89,7 +89,7 @@ class MetaEvaluator:
                               worker_class=self._worker_class,
                               worker_args=self._worker_args),
                 agents=algo.get_exploration_policy(),
-                envs=self._test_task_sampler.sample(1))
+                envs=self._test_task_sampler.sample(self._n_test_tasks)[0])
         for env_up in self._test_task_sampler.sample(self._n_test_tasks):
             policy = algo.get_exploration_policy()
             traj = TrajectoryBatch.concatenate(*[

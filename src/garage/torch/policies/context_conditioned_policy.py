@@ -213,6 +213,7 @@ class ContextConditionedPolicy(nn.Module):
         """
         z = self.z
         obs = torch.as_tensor(obs[None], device=tu.global_device()).float()
+
         obs_in = torch.cat([obs, z], dim=1)
         action, info = self._policy.get_action(obs_in)
         action = np.squeeze(action, axis=0)
@@ -263,3 +264,6 @@ class ContextConditionedPolicy(nn.Module):
 
         """
         return self._context
+
+    def reset(self):
+        ...
