@@ -3,8 +3,8 @@ import numpy as np
 import tensorflow as tf
 
 from garage.tf.distributions import DiagonalGaussian
-from garage.tf.models.gru import gru
 from garage.tf.models.model import Model
+from garage.tf.models.gru import gru
 from garage.tf.models.parameter import recurrent_parameter
 
 
@@ -48,20 +48,19 @@ class GaussianGRUModel(Model):
         std_share_network (bool): Boolean for whether mean and std share
             the same network.
         layer_normalization (bool): Bool for using layer normalization or not.
-
     """
 
     def __init__(self,
                  output_dim,
-                 hidden_dim=32,
+                 hidden_dims=[32],
                  name=None,
                  hidden_nonlinearity=tf.nn.tanh,
-                 hidden_w_init=tf.initializers.glorot_uniform(),
+                 hidden_w_init=tf.glorot_uniform_initializer(),
                  hidden_b_init=tf.zeros_initializer(),
                  recurrent_nonlinearity=tf.nn.sigmoid,
-                 recurrent_w_init=tf.initializers.glorot_uniform(),
+                 recurrent_w_init=tf.glorot_uniform_initializer(),
                  output_nonlinearity=None,
-                 output_w_init=tf.initializers.glorot_uniform(),
+                 output_w_init=tf.glorot_uniform_initializer(),
                  output_b_init=tf.zeros_initializer(),
                  hidden_state_init=tf.zeros_initializer(),
                  hidden_state_init_trainable=False,
@@ -71,7 +70,7 @@ class GaussianGRUModel(Model):
                  layer_normalization=False):
         super().__init__(name)
         self._output_dim = output_dim
-        self._hidden_dim = hidden_dim
+        self._hidden_dims = hidden_dims
         self._hidden_nonlinearity = hidden_nonlinearity
         self._hidden_w_init = hidden_w_init
         self._hidden_b_init = hidden_b_init
@@ -86,27 +85,31 @@ class GaussianGRUModel(Model):
         self._learn_std = learn_std
         self._std_share_network = std_share_network
         self._init_std_param = np.log(init_std)
+
         self._initialize()
 
     def _initialize(self):
-        """Initialize model."""
+        self._mean_std_gru_cells = []
+        self._mean_gru_cells = []
         action_dim = self._output_dim
-        self._mean_std_gru_cell = tf.keras.layers.GRUCell(
-            units=self._hidden_dim,
-            activation=self._hidden_nonlinearity,
-            kernel_initializer=self._hidden_w_init,
-            bias_initializer=self._hidden_b_init,
-            recurrent_activation=self._recurrent_nonlinearity,
-            recurrent_initializer=self._recurrent_w_init,
-            name='mean_std_gru_layer')
-        self._mean_gru_cell = tf.keras.layers.GRUCell(
-            units=self._hidden_dim,
-            activation=self._hidden_nonlinearity,
-            kernel_initializer=self._hidden_w_init,
-            bias_initializer=self._hidden_b_init,
-            recurrent_activation=self._recurrent_nonlinearity,
-            recurrent_initializer=self._recurrent_w_init,
-            name='mean_gru_layer')
+        for hidden_dim in self._hidden_dims:
+            self._mean_std_gru_cells.append(tf.keras.layers.GRUCell(
+                units=hidden_dim,
+                activation=self._hidden_nonlinearity,
+                kernel_initializer=self._hidden_w_init,
+                bias_initializer=self._hidden_b_init,
+                recurrent_activation=self._recurrent_nonlinearity,
+                recurrent_initializer=self._recurrent_w_init,
+                name='mean_std_gru_layer'))
+        for hidden_dim in self._hidden_dims:
+            self._mean_gru_cells.append(tf.keras.layers.GRUCell(
+                units=hidden_dim,
+                activation=self._hidden_nonlinearity,
+                kernel_initializer=self._hidden_w_init,
+                bias_initializer=self._hidden_b_init,
+                recurrent_activation=self._recurrent_nonlinearity,
+                recurrent_initializer=self._recurrent_w_init,
+                name='mean_gru_layer'))
         self._mean_std_output_nonlinearity_layer = tf.keras.layers.Dense(
             units=action_dim * 2,
             activation=self._output_nonlinearity,
@@ -121,50 +124,17 @@ class GaussianGRUModel(Model):
             name='mean_output_layer')
 
     def network_input_spec(self):
-        """Network input spec.
-
-        Return:
-            list[str]: List of key(str) for the network outputs.
-
-        """
+        """Network input spec."""
         return ['full_input', 'step_input', 'step_hidden_input']
 
     def network_output_spec(self):
-        """Network output spec.
-
-        Return:
-            list[str]: List of key(str) for the network outputs.
-
-        """
+        """Network output spec."""
         return [
             'mean', 'step_mean', 'log_std', 'step_log_std', 'step_hidden',
             'init_hidden', 'dist'
         ]
 
-    # pylint: disable=arguments-differ
     def _build(self, state_input, step_input, hidden_input, name=None):
-        """Build model given input placeholder(s).
-
-        Args:
-            state_input (tf.Tensor): Place holder for entire time-series
-                inputs.
-            step_input (tf.Tensor): Place holder for step inputs.
-            hidden_input (tf.Tensor): Place holder for step hidden state.
-            name (str): Inner model name, also the variable scope of the
-                inner model, if exist. One example is
-                garage.tf.models.Sequential.
-
-        Return:
-            tf.Tensor: Entire time-series means.
-            tf.Tensor: Step mean.
-            tf.Tensor: Entire time-series std_log.
-            tf.Tensor: Step std_log.
-            tf.Tensor: Step hidden state.
-            tf.Tensor: Initial hidden state.
-            garage.tf.distributions.DiagonalGaussian: Policy distribution.
-
-        """
-        del name
         action_dim = self._output_dim
 
         with tf.compat.v1.variable_scope('dist_params'):
@@ -172,7 +142,7 @@ class GaussianGRUModel(Model):
                 # mean and std networks share an MLP
                 (outputs, step_outputs, step_hidden, hidden_init_var) = gru(
                     name='mean_std_network',
-                    gru_cell=self._mean_std_gru_cell,
+                    gru_cells=self._mean_std_gru_cells,
                     all_input_var=state_input,
                     step_input_var=step_input,
                     step_hidden_var=hidden_input,
@@ -193,7 +163,7 @@ class GaussianGRUModel(Model):
                 # mean network
                 (mean_var, step_mean_var, step_hidden, hidden_init_var) = gru(
                     name='mean_network',
-                    gru_cell=self._mean_gru_cell,
+                    gru_cells=self._mean_gru_cells,
                     all_input_var=state_input,
                     step_input_var=step_input,
                     step_hidden_var=hidden_input,
@@ -216,25 +186,15 @@ class GaussianGRUModel(Model):
                 step_hidden, hidden_init_var, dist)
 
     def __getstate__(self):
-        """Object.__getstate__.
-
-        Returns:
-            dict: The state to be pickled for the instance.
-
-        """
+        """Object.__getstate__."""
         new_dict = super().__getstate__()
-        del new_dict['_mean_std_gru_cell']
-        del new_dict['_mean_gru_cell']
+        del new_dict['_mean_std_gru_cells']
+        del new_dict['_mean_gru_cells']
         del new_dict['_mean_std_output_nonlinearity_layer']
         del new_dict['_mean_output_nonlinearity_layer']
         return new_dict
 
     def __setstate__(self, state):
-        """Object.__setstate__.
-
-        Args:
-            state (dict): Unpickled state.
-
-        """
+        """Object.__setstate__."""
         super().__setstate__(state)
         self._initialize()

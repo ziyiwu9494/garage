@@ -58,7 +58,7 @@ def rl2_trpo_metaworld_ml10(ctxt, seed, max_path_length, meta_batch_size,
 
         env_spec = ml10_train_envs[0].spec
         policy = GaussianGRUPolicy(name='policy',
-                                   hidden_dim=16,
+                                   hidden_dims=[200, 200],
                                    env_spec=env_spec,
                                    state_include_action=False)
 
