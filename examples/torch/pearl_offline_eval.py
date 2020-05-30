@@ -1,6 +1,7 @@
 import argparse
+import os
 
-from dowel import StdOutput, logger, tabular
+from dowel import StdOutput, logger, tabular, CsvOutput
 from metaworld.benchmarks import ML45
 
 from garage.envs import GarageEnv, normalize
@@ -40,6 +41,7 @@ def evaluate(meta_train_dir,
 
     meta_evaluator.evaluate(runner._algo)
     logger.log(tabular)
+    logger.dump_output_type(CsvOutput)
 
 
 if __name__ == '__main__':
@@ -56,6 +58,9 @@ if __name__ == '__main__':
     meta_train_dir = args.folder
     max_path_length = 150
     adapt_rollout_per_task = 10
+
+    log_filename = os.path.join(meta_train_dir, 'meta-test.csv')
+    logger.add_output(CsvOutput(log_filename))
 
     evaluate(meta_train_dir,
              max_path_length,
