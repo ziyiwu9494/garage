@@ -132,3 +132,6 @@ class ExistingEnvUpdate(EnvUpdate):
                       'method of transmitting environments to other '
                       'processes.')
         return self.__dict__
+
+    def __deepcopy__(self):
+        raise ValueError('Should not deepcopy')

@@ -14,6 +14,8 @@ import tensorflow as tf
 from garage.tf.misc import tensor_utils
 from garage.tf.optimizers.utils import LazyDict, sliced_fun
 
+from memory_profiler import profile
+
 
 class HessianVectorProduct(abc.ABC):
     """Base class for computing Hessian-vector product.
@@ -57,6 +59,7 @@ class HessianVectorProduct(abc.ABC):
 
         """
 
+        @profile
         def _eval(v):
             """The evaluation function.
 
