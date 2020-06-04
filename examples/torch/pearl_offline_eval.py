@@ -10,10 +10,7 @@ from garage.experiment.task_sampler import EnvPoolSampler
 import garage.torch.utils as tu
 
 
-def evaluate(meta_train_dir,
-             max_path_length,
-             adapt_rollout_per_task,
-             use_gpu):
+def evaluate(meta_train_dir, max_path_length, adapt_rollout_per_task, use_gpu):
     snapshot_config = SnapshotConfig(snapshot_dir=meta_train_dir,
                                      snapshot_mode='all',
                                      snapshot_gap=1)
@@ -32,12 +29,11 @@ def evaluate(meta_train_dir,
     if use_gpu:
         runner._algo.to()
 
-    meta_evaluator = MetaEvaluator(
-        test_task_sampler=test_env_sampler,
-        max_path_length=max_path_length,
-        n_test_tasks=test_env_sampler.n_tasks,
-        n_exploration_traj=1,
-        prefix='')
+    meta_evaluator = MetaEvaluator(test_task_sampler=test_env_sampler,
+                                   max_path_length=max_path_length,
+                                   n_test_tasks=test_env_sampler.n_tasks,
+                                   n_exploration_traj=1,
+                                   prefix='')
 
     meta_evaluator._n_exploration_traj = adapt_rollout_per_task
     meta_evaluator.evaluate(runner._algo, test_rollouts_per_task=100)
@@ -62,10 +58,9 @@ if __name__ == '__main__':
     max_path_length = 150
     adapt_rollout_per_task = int(args.adapt_rollout)
 
-    log_filename = os.path.join(meta_train_dir, 'meta_test_adapt_{}.csv'.format(adapt_rollout_per_task))
+    log_filename = os.path.join(
+        meta_train_dir,
+        'meta_test_adapt_{}.csv'.format(adapt_rollout_per_task))
     logger.add_output(CsvOutput(log_filename))
 
-    evaluate(meta_train_dir,
-             max_path_length,
-             adapt_rollout_per_task,
-             use_gpu)
+    evaluate(meta_train_dir, max_path_length, adapt_rollout_per_task, use_gpu)

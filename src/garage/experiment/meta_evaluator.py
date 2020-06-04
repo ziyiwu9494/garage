@@ -94,8 +94,8 @@ class MetaEvaluator:
             policy = algo.get_exploration_policy()
             if self._n_exploration_traj > 0:
                 traj = TrajectoryBatch.concatenate(*[
-                    self._test_sampler.obtain_samples(self._eval_itr, 1, policy,
-                                                      env_up)
+                    self._test_sampler.obtain_samples(self._eval_itr, 1,
+                                                      policy, env_up)
                     for _ in range(self._n_exploration_traj)
                 ])
                 adapted_policy = algo.adapt_policy(policy, traj)
