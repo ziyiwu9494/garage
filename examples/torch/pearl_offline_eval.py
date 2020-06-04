@@ -36,10 +36,12 @@ def evaluate(meta_train_dir,
         test_task_sampler=test_env_sampler,
         max_path_length=max_path_length,
         n_test_tasks=test_env_sampler.n_tasks,
-        n_exploration_traj=adapt_rollout_per_task,
+        n_exploration_traj=1,
         prefix='')
 
-    meta_evaluator.evaluate(runner._algo)
+    meta_evaluator._n_exploration_traj = adapt_rollout_per_task
+    meta_evaluator.evaluate(runner._algo, test_rollouts_per_task=100)
+    tabular.record('adapt_rollouts', adapt_rollout_per_task)
     logger.log(tabular)
     logger.dump_output_type(CsvOutput)
 
@@ -50,6 +52,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('folder')
     parser.add_argument('--use_gpu', default=True)
+    parser.add_argument('--adapt_rollout', default=1)
 
     args = parser.parse_args()
 
@@ -57,9 +60,9 @@ if __name__ == '__main__':
     use_gpu = args.use_gpu
     meta_train_dir = args.folder
     max_path_length = 150
-    adapt_rollout_per_task = 10
+    adapt_rollout_per_task = int(args.adapt_rollout)
 
-    log_filename = os.path.join(meta_train_dir, 'meta-test.csv')
+    log_filename = os.path.join(meta_train_dir, 'meta_test_adapt_{}.csv'.format(adapt_rollout_per_task))
     logger.add_output(CsvOutput(log_filename))
 
     evaluate(meta_train_dir,
