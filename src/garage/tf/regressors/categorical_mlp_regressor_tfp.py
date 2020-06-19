@@ -120,25 +120,28 @@ class CategoricalMLPRegressorTFP(StochasticRegressor):
 
         # model for old distribution, used when trusted region is on
         self._old_model = self.model.clone(name='model_for_old_dist')
+        self._network = None
+        self._old_network = None
         self._initialize()
 
     def _initialize(self):
         input_var = tf.compat.v1.placeholder(tf.float32,
                                              shape=(None, ) +
                                              self._input_shape)
-        self._old_model.build(input_var)
-        self._old_model.parameters = self.model.parameters
+        self._old_network = self._old_model.build(input_var)
+
         with tf.compat.v1.variable_scope(self._variable_scope):
-            self.model.build(input_var)
+            self._network = self.model.build(input_var)
+            self._old_model.parameters = self.model.parameters
 
             ys_var = tf.compat.v1.placeholder(dtype=tf.float32,
                                               name='ys',
                                               shape=(None, self._output_dim))
 
-            y_hat = self.model.networks['default'].y_hat
+            y_hat = self._network.y_hat
 
-            dist = self.model.networks['default'].categorical_dist
-            old_dist = self._old_model.networks['default'].categorical_dist
+            dist = self._network.categorical_dist
+            old_dist = self._old_network.categorical_dist
 
             mean_kl = tf.reduce_mean(old_dist.kl_divergence(dist))
 
@@ -170,14 +173,10 @@ class CategoricalMLPRegressorTFP(StochasticRegressor):
         """
         if self._normalize_inputs:
             # recompute normalizing constants for inputs
-            self.model.networks['default'].x_mean.load(
-                np.mean(xs, axis=0, keepdims=True))
-            self.model.networks['default'].x_std.load(
-                np.std(xs, axis=0, keepdims=True))
-            self._old_model.networks['default'].x_mean.load(
-                np.mean(xs, axis=0, keepdims=True))
-            self._old_model.networks['default'].x_std.load(
-                np.std(xs, axis=0, keepdims=True))
+            self._network.x_mean.load(np.mean(xs, axis=0, keepdims=True))
+            self._network.x_std.load(np.std(xs, axis=0, keepdims=True))
+            self._old_network.x_mean.load(np.mean(xs, axis=0, keepdims=True))
+            self._old_network.x_std.load(np.std(xs, axis=0, keepdims=True))
 
         inputs = [xs, ys]
         if self._use_trust_region:
@@ -219,7 +218,7 @@ class CategoricalMLPRegressorTFP(StochasticRegressor):
     @property
     def distribution(self):
         """garage.tf.distributions.DiagonalGaussian: Distribution."""
-        return self.model.networks['default'].dist
+        return self._network.dist
 
     def __getstate__(self):
         """Object.__getstate__.
@@ -230,6 +229,8 @@ class CategoricalMLPRegressorTFP(StochasticRegressor):
         """
         new_dict = super().__getstate__()
         del new_dict['_f_predict']
+        del new_dict['_network']
+        del new_dict['_old_network']
         return new_dict
 
     def __setstate__(self, state):
