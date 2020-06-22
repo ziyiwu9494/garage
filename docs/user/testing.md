@@ -28,7 +28,7 @@ tests
 
 ## Prerequisites
 
-To begin testing, we suggest using the same Python manager environment i.e. `virtualenv`, `conda` as we develop on garage repository so that all packages and dependencies required for testing are installed in the virutal environment.
+To begin testing, we suggest using the same Python virtual environment i.e. `virtualenv`, `conda` as we develop on garage repository so that all packages and dependencies required for testing are installed in the virtual environment.
 
 Let's begin by activating the virtual environment:
 
@@ -42,7 +42,7 @@ $ source myenv/bin/activate
 
 Next, we need to install pytest. Generally, pytest should have already been installed upon garage's `dev` installation. To install the garage environment for testing, you will need to install the `garage[all,dev]` for dependencies such as pytest, mujoco and so on.
 
-Also, you may want to check out our installation guide first before diving into tests. It is also recommened to check out official [pytest](https://docs.pytest.org/en/stable/getting-started.html) documentation.
+Also, you may want to check out our installation guide first before diving into tests. It is also recommended to check out official [pytest](https://docs.pytest.org/en/stable/getting-started.html) documentation.
 
 ```bash
 $ cd path/to/garage/
@@ -65,7 +65,7 @@ Let's write a simple test case for the vpg algorithm `src/garage/tf/algos/vpg.py
 
 We begin by creating a file called `test_vpg.py` and put it under the tree `tests/garage/tf/algos/`.
 
-We want to test VPG in the cart pole environment. Hence, we create a unitest named `test_vpg_cartpole`. Inside the function, we define the environemnt, the policy and the baselien and feed them to the VPG algorithm and run the experiment. Finally, we make sure the return value is identical to our expectation by using `assert`.
+We want to test VPG in the cart-pole environment. Hence, we create a unit test function named `test_vpg_cartpole`. Inside the function, we define the environment, the policy and the baseline and feed them to the VPG algorithm and run the experiment. Finally, we make sure the return value is identical to our expectation by using `assert`.
 
 In new xunit-style tests, multiple tests are modeled into a class for modular and scalable structure. There is no need to subclass or anything, but make sure the prefix of the class starts with `Test`, otherwise the class will be skipped. Note that it's not encouraged to use this style, especially when a test doesn't require `setup_method` and `teardown_method`.
 
@@ -147,7 +147,8 @@ Below are the pytest methods and functions that we found helpful for testing gar
 
 `teardown_method` is called after every tests to teardown any state that was previously setup with a `setup_method`.
 
-For details on `setup_method` and `teardown_method`, check [this](https://docs.pytest.org/en/2.8.7/xunit_setup.html).
+For details on `setup_method` and `teardown_method`, check [this](https://docs.pytest.org/en/stable/xunit_setup.html).
+
 
 ```Python
 class TestSampleClass:
