@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from garage import log_performance
 from garage.np import obtain_evaluation_samples
 from garage.np.algos import RLAlgorithm
-from garage.sampler import RaySampler
+from garage.sampler import FragmentWorker, RaySampler
 from garage.torch import dict_np_to_torch, global_device
 
 
@@ -137,6 +137,7 @@ class SAC(RLAlgorithm):
         self.replay_buffer = replay_buffer
 
         self.sampler_cls = RaySampler
+        self.worker_cls = FragmentWorker
 
         self._reward_scale = reward_scale
         # use 2 target q networks
