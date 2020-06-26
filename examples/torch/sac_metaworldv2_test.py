@@ -2,7 +2,7 @@
 """This is an example to train a task with SAC algorithm written in PyTorch."""
 import click
 import gym
-from metaworld.envs.mujoco.env_dict import ALL_ENVIRONMENTS
+from metaworld.envs.mujoco.env_dict import ALL_V2_ENVIRONMENTS
 import numpy as np
 import torch
 from torch import nn
@@ -17,11 +17,10 @@ from garage.sampler import LocalSampler
 from garage.torch.algos import SAC
 from garage.torch.policies import TanhGaussianMLPPolicy
 from garage.torch.q_functions import ContinuousMLPQFunction
-import garage.torch.utils as tu
-
+from garage.torch import set_gpu_mode
 _SEED = None
 _GPU = None
-_ENV_NAME = ""
+_ENV_NAME = ''
 
 @click.command()
 @click.option('--seed', '_seed', type=int, default=np.random.randint(0, 1000))
@@ -42,7 +41,7 @@ def get_args(_seed=1, _gpu=None, _env_name=None):
     _GPU = _gpu
     _ENV_NAME = _env_name
 
-    @wrap_experiment(snapshot_mode='all', prefix=_ENV_NAME)
+    @wrap_experiment(snapshot_mode='gap', prefix=_ENV_NAME, snapshot_gap=50)
     def sac_metaworldv2_test(ctxt=None):
         """Set up environment and algorithm and run the task.
 
@@ -52,13 +51,13 @@ def get_args(_seed=1, _gpu=None, _env_name=None):
 
         """
         global _SEED, _GPU, _ENV_NAME
-        not_in_mw = "the env_name specified is not a metaworld environment"
-        assert _ENV_NAME in ALL_ENVIRONMENTS, not_in_mw
+        not_in_mw = 'the env_name specified is not a metaworld environment'
+        assert _ENV_NAME in ALL_V2_ENVIRONMENTS, not_in_mw
         deterministic.set_seed(_SEED)
         runner = LocalRunner(snapshot_config=ctxt)
-        env_cls = ALL_ENVIRONMENTS[_ENV_NAME]
+        env_cls = ALL_V2_ENVIRONMENTS[_ENV_NAME]
         env = GarageEnv(normalize(env_cls(random_init=False)))
-        import ipdb; ipdb.set_trace()
+        max_path_length = env.max_path_length
         policy = TanhGaussianMLPPolicy(
             env_spec=env.spec,
             hidden_sizes=[256, 256],
@@ -77,28 +76,31 @@ def get_args(_seed=1, _gpu=None, _env_name=None):
                                     hidden_nonlinearity=F.relu)
 
         replay_buffer = PathBuffer(capacity_in_transitions=int(1e6))
-        batch_size = 300
-
+        batch_size = max_path_length * 2
+        num_time_steps = 10000000
+        num_epochs = 250
+        steps_per_epoch = int(np.ceil(num_time_steps / (num_epochs * batch_size)))
         sac = SAC(env_spec=env.spec,
                 policy=policy,
                 qf1=qf1,
                 qf2=qf2,
                 gradient_steps_per_itr=batch_size,
-                max_path_length=150,
+                max_path_length=max_path_length,
                 replay_buffer=replay_buffer,
                 min_buffer_size=1e4,
                 target_update_tau=5e-3,
                 discount=0.99,
                 buffer_batch_size=256,
                 reward_scale=1.,
-                steps_per_epoch=20,
-                num_evaluation_trajectories=10)
+                steps_per_epoch=steps_per_epoch,
+                num_evaluation_trajectories=10,
+                max_eval_path_length=max_path_length,)
 
         if _GPU is not None:
-            tu.set_gpu_mode(True, _GPU)
+            set_gpu_mode(True, _GPU)
         sac.to()
         runner.setup(algo=sac, env=env, sampler_cls=LocalSampler)
-        runner.train(n_epochs=500, batch_size=batch_size)
+        runner.train(n_epochs=num_epochs, batch_size=batch_size)
     sac_metaworldv2_test()
 
 get_args()
