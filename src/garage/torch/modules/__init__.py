@@ -1,5 +1,6 @@
 """Pytorch modules."""
 
+from garage.torch.modules.gaussian_gru_module import GaussianGRUModule
 from garage.torch.modules.gaussian_mlp_module import \
     GaussianMLPIndependentStdModule, GaussianMLPModule, \
     GaussianMLPTwoHeadedModule
@@ -13,5 +14,6 @@ __all__ = [
     'GaussianMLPModule',
     'GaussianMLPIndependentStdModule',
     'GaussianMLPTwoHeadedModule',
+    'GaussianGRUModule',
     'GRUModule',
 ]
