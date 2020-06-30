@@ -15,7 +15,7 @@ from garage.torch.value_functions import GaussianMLPValueFunction
 
 
 @wrap_experiment
-def trpo_pendulum(ctxt=None, seed=1):
+def trpo_pendulum_gru(ctxt=None, seed=1):
     """Train TRPO with InvertedDoublePendulum-v2 environment.
 
     Args:
@@ -30,10 +30,11 @@ def trpo_pendulum(ctxt=None, seed=1):
 
     runner = LocalRunner(ctxt)
 
-    policy = GaussianMLPPolicy(env.spec,
-                               hidden_sizes=[32, 32],
+    policy = GaussianGRUPolicy(env.spec,
+                               hidden_dim=32, # [32, 32]
                                hidden_nonlinearity=torch.tanh,
                                output_nonlinearity=None)
+
 
     value_function = GaussianMLPValueFunction(env_spec=env.spec,
                                               hidden_sizes=(32, 32),
@@ -51,4 +52,4 @@ def trpo_pendulum(ctxt=None, seed=1):
     runner.train(n_epochs=100, batch_size=1024)
 
 
-trpo_pendulum(seed=1)
+trpo_pendulum_gru(seed=1)
