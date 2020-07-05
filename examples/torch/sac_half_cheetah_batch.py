@@ -55,7 +55,7 @@ def sac_half_cheetah_batch(ctxt=None, seed=1):
               policy=policy,
               qf1=qf1,
               qf2=qf2,
-              gradient_steps_per_itr=1000,
+              gradient_steps_per_itr=50,
               max_path_length=500,
               replay_buffer=replay_buffer,
               min_buffer_size=1e4,
@@ -63,7 +63,7 @@ def sac_half_cheetah_batch(ctxt=None, seed=1):
               discount=0.99,
               buffer_batch_size=256,
               reward_scale=1.,
-              steps_per_epoch=1)
+              steps_per_epoch=20)
 
     if torch.cuda.is_available():
         set_gpu_mode(True)
@@ -71,7 +71,7 @@ def sac_half_cheetah_batch(ctxt=None, seed=1):
         set_gpu_mode(False)
     sac.to()
     runner.setup(algo=sac, env=env, sampler_cls=LocalSampler)
-    runner.train(n_epochs=1000, batch_size=1000)
+    runner.train(n_epochs=1000, batch_size=50)
 
 
 s = np.random.randint(0, 1000)
