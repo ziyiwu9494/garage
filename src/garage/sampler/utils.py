@@ -4,7 +4,7 @@ import time
 
 import numpy as np
 
-from garage.misc import tensor_utils
+from garage.np import stack_tensor_dict_list, truncate_tensor_dict
 
 
 def rollout(env,
@@ -83,8 +83,8 @@ def rollout(env,
         observations=np.array(observations),
         actions=np.array(actions),
         rewards=np.array(rewards),
-        agent_infos=tensor_utils.stack_tensor_dict_list(agent_infos),
-        env_infos=tensor_utils.stack_tensor_dict_list(env_infos),
+        agent_infos=stack_tensor_dict_list(agent_infos),
+        env_infos=stack_tensor_dict_list(env_infos),
         dones=np.array(dones),
     )
 
@@ -131,8 +131,7 @@ def truncate_paths(paths, max_samples):
             if k in ['observations', 'actions', 'rewards']:
                 truncated_last_path[k] = v[:truncated_len]
             elif k in ['env_infos', 'agent_infos']:
-                truncated_last_path[k] = tensor_utils.truncate_tensor_dict(
-                    v, truncated_len)
+                truncated_last_path[k] = truncate_tensor_dict(v, truncated_len)
             else:
                 raise ValueError(
                     'Unexpected key {} found in path. Valid keys: {}'.format(

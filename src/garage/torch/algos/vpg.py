@@ -8,8 +8,8 @@ import torch
 import torch.nn.functional as F
 
 from garage import log_performance, TrajectoryBatch
-from garage.misc import tensor_utils as tu
-from garage.np.algos.rl_algorithm import RLAlgorithm
+from garage.np import discount_cumsum
+from garage.np.algos import RLAlgorithm
 from garage.sampler import RaySampler
 from garage.torch import compute_advantages, filter_valids, pad_to_last
 from garage.torch.optimizers import OptimizerWrapper
@@ -475,8 +475,7 @@ class VPG(RLAlgorithm):
             for path in paths
         ])
         returns = torch.stack([
-            pad_to_last(tu.discount_cumsum(path['rewards'],
-                                           self.discount).copy(),
+            pad_to_last(discount_cumsum(path['rewards'], self.discount).copy(),
                         total_length=self.max_path_length) for path in paths
         ])
         with torch.no_grad():

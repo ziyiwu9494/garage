@@ -5,7 +5,7 @@ from dowel import tabular
 import numpy as np
 
 import garage
-from garage.misc.tensor_utils import discount_cumsum
+from garage.np import discount_cumsum
 
 
 class _Default:  # pylint: disable=too-few-public-methods

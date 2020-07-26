@@ -4,7 +4,7 @@ import collections
 import akro
 import numpy as np
 
-from garage.misc import tensor_utils
+from garage.np import concat_tensor_dict_list, slice_nested_dict
 
 
 class TrajectoryBatch(
@@ -279,18 +279,16 @@ class TrajectoryBatch(
         start = 0
         for i, length in enumerate(self.lengths):
             stop = start + length
-            traj = TrajectoryBatch(env_spec=self.env_spec,
-                                   observations=self.observations[start:stop],
-                                   last_observations=np.asarray(
-                                       [self.last_observations[i]]),
-                                   actions=self.actions[start:stop],
-                                   rewards=self.rewards[start:stop],
-                                   terminals=self.terminals[start:stop],
-                                   env_infos=tensor_utils.slice_nested_dict(
-                                       self.env_infos, start, stop),
-                                   agent_infos=tensor_utils.slice_nested_dict(
-                                       self.agent_infos, start, stop),
-                                   lengths=np.asarray([length]))
+            traj = TrajectoryBatch(
+                env_spec=self.env_spec,
+                observations=self.observations[start:stop],
+                last_observations=np.asarray([self.last_observations[i]]),
+                actions=self.actions[start:stop],
+                rewards=self.rewards[start:stop],
+                terminals=self.terminals[start:stop],
+                env_infos=slice_nested_dict(self.env_infos, start, stop),
+                agent_infos=slice_nested_dict(self.agent_infos, start, stop),
+                lengths=np.asarray([length]))
             trajectories.append(traj)
             start = stop
         return trajectories
@@ -398,7 +396,7 @@ class TrajectoryBatch(
                 last_observations = np.asarray(
                     [p['observations'][-1] for p in paths])
 
-        stacked_paths = tensor_utils.concat_tensor_dict_list(paths)
+        stacked_paths = concat_tensor_dict_list(paths)
         return cls(env_spec=env_spec,
                    observations=observations,
                    last_observations=last_observations,

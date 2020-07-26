@@ -11,7 +11,7 @@ from garage import (_Default,
                     log_multitask_performance,
                     make_optimizer,
                     TrajectoryBatch)
-from garage.misc import tensor_utils
+from garage.np import discount_cumsum
 from garage.sampler import RaySampler
 from garage.sampler.env_update import SetTaskUpdate
 from garage.torch import update_module_params
@@ -377,7 +377,7 @@ class MAML:
 
         """
         for path in paths:
-            path['returns'] = tensor_utils.discount_cumsum(
+            path['returns'] = discount_cumsum(
                 path['rewards'], self._inner_algo.discount).copy()
 
         self._train_value_function(paths)

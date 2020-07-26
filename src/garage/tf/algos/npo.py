@@ -8,7 +8,7 @@ import numpy as np
 import tensorflow as tf
 
 from garage import log_performance, make_optimizer, TrajectoryBatch
-from garage.misc import tensor_utils as np_tensor_utils
+from garage.np import explained_variance_1d, pad_tensor_n
 from garage.np.algos import RLAlgorithm
 from garage.sampler import RaySampler
 from garage.tf import paths_to_tensors
@@ -271,9 +271,9 @@ class NPO(RLAlgorithm):
         tabular.record('{}/Perplexity'.format(self.policy.name), np.exp(ent))
         self._fit_baseline_with_data(samples_data)
 
-        ev = np_tensor_utils.explained_variance_1d(samples_data['baselines'],
-                                                   samples_data['returns'],
-                                                   samples_data['valids'])
+        ev = explained_variance_1d(samples_data['baselines'],
+                                   samples_data['returns'],
+                                   samples_data['valids'])
 
         tabular.record('{}/ExplainedVariance'.format(self._baseline.name), ev)
         self._old_policy.parameters = self.policy.parameters
@@ -501,10 +501,10 @@ class NPO(RLAlgorithm):
             path['returns'] = ret[val.astype(np.bool)]
             aug_rewards.append(path['rewards'])
             aug_returns.append(path['returns'])
-        samples_data['rewards'] = np_tensor_utils.pad_tensor_n(
-            aug_rewards, self.max_path_length)
-        samples_data['returns'] = np_tensor_utils.pad_tensor_n(
-            aug_returns, self.max_path_length)
+        samples_data['rewards'] = pad_tensor_n(aug_rewards,
+                                               self.max_path_length)
+        samples_data['returns'] = pad_tensor_n(aug_returns,
+                                               self.max_path_length)
 
         # Fit baseline
         logger.log('Fitting baseline...')

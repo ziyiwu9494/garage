@@ -226,8 +226,8 @@ form of REINFORCE [1]_ (a.k.a. Vanilla Policy Gradient) using PyTorch.
     import torch
     import numpy as np
 
+    from garage.np import discount_cumsum
     from garage.samplers import RaySampler
-    from garage.misc import tensor_utils as tu
 
     class MyAlgorithm:
 
@@ -249,7 +249,7 @@ form of REINFORCE [1]_ (a.k.a. Vanilla Policy Gradient) using PyTorch.
             losses = []
             self._policy_opt.zero_grad()
             for path in samples:
-                returns_numpy = tu.discount_cumsum(path['rewards'], self._discount)
+                returns_numpy = discount_cumsum(path['rewards'], self._discount)
                 returns = torch.Tensor(returns_numpy.copy())
                 obs = torch.Tensor(path['observations'])
                 actions = torch.Tensor(path['actions'])
@@ -294,8 +294,8 @@ For completeness, the full experiment file is repeated below:
     from dowel import tabular
 
     from garage import log_performance, TrajectoryBatch
+    from garage.np import discount_cumsum
     from garage.sampler import RaySampler
-    from garage.misc import tensor_utils as tu
 
     class MyAlgorithm:
 
@@ -322,7 +322,7 @@ For completeness, the full experiment file is repeated below:
             losses = []
             self._policy_opt.zero_grad()
             for path in samples:
-                returns_numpy = tu.discount_cumsum(path['rewards'], self._discount)
+                returns_numpy = discount_cumsum(path['rewards'], self._discount)
                 returns = torch.Tensor(returns_numpy.copy())
                 obs = torch.Tensor(path['observations'])
                 actions = torch.Tensor(path['actions'])
