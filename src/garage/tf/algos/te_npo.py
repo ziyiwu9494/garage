@@ -12,20 +12,20 @@ from garage.experiment import deterministic
 from garage.misc import tensor_utils as np_tensor_utils
 from garage.np.algos import RLAlgorithm
 from garage.sampler import LocalSampler
-from garage.tf import paths_to_tensors
+from garage.tf import (center_advs,
+                       compile_function,
+                       compute_advantages,
+                       concat_tensor_list,
+                       discounted_returns,
+                       flatten_inputs,
+                       graph_inputs,
+                       pad_tensor,
+                       pad_tensor_dict,
+                       pad_tensor_n,
+                       paths_to_tensors,
+                       positive_advs,
+                       stack_tensor_dict_list)
 from garage.tf.embeddings import StochasticEncoder
-from garage.tf.misc.tensor_utils import (center_advs,
-                                         compile_function,
-                                         compute_advantages,
-                                         concat_tensor_list,
-                                         discounted_returns,
-                                         flatten_inputs,
-                                         graph_inputs,
-                                         pad_tensor,
-                                         pad_tensor_dict,
-                                         pad_tensor_n,
-                                         positive_advs,
-                                         stack_tensor_dict_list)
 from garage.tf.optimizers import LbfgsOptimizer
 from garage.tf.policies import TaskEmbeddingPolicy
 

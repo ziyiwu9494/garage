@@ -7,7 +7,7 @@ from garage import _Default, log_performance, make_optimizer
 from garage.np import obtain_evaluation_samples
 from garage.np.algos import RLAlgorithm
 from garage.sampler import LocalSampler
-from garage.tf.misc import tensor_utils
+from garage.tf import compile_function, get_target_ops
 
 
 class DDPG(RLAlgorithm):
@@ -148,27 +148,26 @@ class DDPG(RLAlgorithm):
                                                                name='policy')
             target_qf_outputs = self._target_qf.build(obs, actions, name='qf')
 
-            self.target_policy_f_prob_online = tensor_utils.compile_function(
+            self.target_policy_f_prob_online = compile_function(
                 inputs=[obs], outputs=policy_network_outputs)
-            self.target_qf_f_prob_online = tensor_utils.compile_function(
+            self.target_qf_f_prob_online = compile_function(
                 inputs=[obs, actions], outputs=target_qf_outputs)
 
             # Set up target init and update function
             with tf.name_scope('setup_target'):
-                ops = tensor_utils.get_target_ops(
-                    self.policy.get_global_vars(),
-                    self._target_policy.get_global_vars(), self._tau)
+                ops = get_target_ops(self.policy.get_global_vars(),
+                                     self._target_policy.get_global_vars(),
+                                     self._tau)
                 policy_init_ops, policy_update_ops = ops
-                qf_init_ops, qf_update_ops = tensor_utils.get_target_ops(
+                qf_init_ops, qf_update_ops = get_target_ops(
                     self._qf.get_global_vars(),
                     self._target_qf.get_global_vars(), self._tau)
                 target_init_op = policy_init_ops + qf_init_ops
                 target_update_op = policy_update_ops + qf_update_ops
 
-            f_init_target = tensor_utils.compile_function(
-                inputs=[], outputs=target_init_op)
-            f_update_target = tensor_utils.compile_function(
-                inputs=[], outputs=target_update_op)
+            f_init_target = compile_function(inputs=[], outputs=target_init_op)
+            f_update_target = compile_function(inputs=[],
+                                               outputs=target_update_op)
 
             with tf.name_scope('inputs'):
                 obs_dim = self.env_spec.observation_space.flat_dim
@@ -204,7 +203,7 @@ class DDPG(RLAlgorithm):
                 policy_train_op = policy_optimizer.minimize(
                     action_loss, var_list=self.policy.get_trainable_vars())
 
-            f_train_policy = tensor_utils.compile_function(
+            f_train_policy = compile_function(
                 inputs=[obs], outputs=[policy_train_op, action_loss])
 
             # Set up qf training function
@@ -226,7 +225,7 @@ class DDPG(RLAlgorithm):
                 qf_train_op = qf_optimizer.minimize(
                     qval_loss, var_list=self._qf.get_trainable_vars())
 
-            f_train_qf = tensor_utils.compile_function(
+            f_train_qf = compile_function(
                 inputs=[input_y, obs, actions],
                 outputs=[qf_train_op, qval_loss, qval])
 

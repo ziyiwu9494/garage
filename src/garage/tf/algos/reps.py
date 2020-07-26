@@ -1,4 +1,5 @@
 """Relative Entropy Policy Search implementation in Tensorflow."""
+# yapf: disable
 import collections
 
 from dowel import logger, tabular
@@ -9,10 +10,14 @@ import tensorflow as tf
 from garage import _Default, log_performance, make_optimizer, TrajectoryBatch
 from garage.np.algos import RLAlgorithm
 from garage.sampler import RaySampler
-from garage.tf import paths_to_tensors
-from garage.tf.misc import tensor_utils
-from garage.tf.misc.tensor_utils import flatten_inputs, graph_inputs
+from garage.tf import (compile_function,
+                       flatten_inputs,
+                       graph_inputs,
+                       new_tensor,
+                       paths_to_tensors)
 from garage.tf.optimizers import LbfgsOptimizer
+
+# yapf: enable
 
 
 # pylint: disable=differing-param-doc, differing-type-doc
@@ -332,43 +337,45 @@ class REPS(RLAlgorithm):  # noqa: D416
         action_space = self.policy.action_space
 
         with tf.name_scope('inputs'):
+            # yapf: disable
             obs_var = observation_space.to_tf_placeholder(
                 name='obs',
-                batch_dims=2)  # yapf: disable
+                batch_dims=2)
             action_var = action_space.to_tf_placeholder(
                 name='action',
-                batch_dims=2)  # yapf: disable
-            reward_var = tensor_utils.new_tensor(
+                batch_dims=2)
+            reward_var = new_tensor(
                 name='reward',
                 ndim=2,
-                dtype=tf.float32)  # yapf: disable
-            valid_var = tensor_utils.new_tensor(
+                dtype=tf.float32)
+            valid_var = new_tensor(
                 name='valid',
                 ndim=2,
-                dtype=tf.float32)  # yapf: disable
-            feat_diff = tensor_utils.new_tensor(
+                dtype=tf.float32)
+            feat_diff = new_tensor(
                 name='feat_diff',
                 ndim=2,
-                dtype=tf.float32)  # yapf: disable
-            param_v = tensor_utils.new_tensor(
+                dtype=tf.float32)
+            param_v = new_tensor(
                 name='param_v',
                 ndim=1,
-                dtype=tf.float32)  # yapf: disable
-            param_eta = tensor_utils.new_tensor(
+                dtype=tf.float32)
+            param_eta = new_tensor(
                 name='param_eta',
                 ndim=0,
-                dtype=tf.float32)  # yapf: disable
+                dtype=tf.float32)
             policy_state_info_vars = {
                 k: tf.compat.v1.placeholder(
                     tf.float32,
                     shape=[None] * 2 + list(shape),
                     name=k)
                 for k, shape in self.policy.state_info_specs
-            }  # yapf: disable
+            }
             policy_state_info_vars_list = [
                 policy_state_info_vars[k]
                 for k in self.policy.state_info_keys
-            ]  # yapf: disable
+            ]
+            # yapf: enable
 
         self._policy_network = self.policy.build(obs_var, name='policy')
         self._old_policy_network = self._old_policy.build(obs_var,
@@ -465,21 +472,21 @@ class REPS(RLAlgorithm):  # noqa: D416
             dual_grad = tf.gradients(dual_loss, [i.param_eta, i.param_v])
 
         # yapf: disable
-        self._f_dual = tensor_utils.compile_function(
+        self._f_dual = compile_function(
             flatten_inputs(self._dual_opt_inputs),
             dual_loss,
             log_name='f_dual')
         # yapf: enable
 
-        self._f_dual_grad = tensor_utils.compile_function(
-            flatten_inputs(self._dual_opt_inputs),
-            dual_grad,
-            log_name='f_dual_grad')
+        self._f_dual_grad = compile_function(flatten_inputs(
+            self._dual_opt_inputs),
+                                             dual_grad,
+                                             log_name='f_dual_grad')
 
-        self._f_policy_kl = tensor_utils.compile_function(
-            flatten_inputs(self._policy_opt_inputs),
-            pol_mean_kl,
-            log_name='f_policy_kl')
+        self._f_policy_kl = compile_function(flatten_inputs(
+            self._policy_opt_inputs),
+                                             pol_mean_kl,
+                                             log_name='f_policy_kl')
 
         return loss
 

@@ -11,14 +11,14 @@ from garage import log_performance, make_optimizer, TrajectoryBatch
 from garage.misc import tensor_utils as np_tensor_utils
 from garage.np.algos import RLAlgorithm
 from garage.sampler import RaySampler
-from garage.tf import paths_to_tensors
-from garage.tf.misc.tensor_utils import (center_advs,
-                                         compile_function,
-                                         compute_advantages,
-                                         discounted_returns,
-                                         flatten_inputs,
-                                         graph_inputs,
-                                         positive_advs)
+from garage.tf import (center_advs,
+                       compile_function,
+                       compute_advantages,
+                       discounted_returns,
+                       flatten_inputs,
+                       graph_inputs,
+                       paths_to_tensors,
+                       positive_advs)
 from garage.tf.optimizers import LbfgsOptimizer
 
 # yapf: enable

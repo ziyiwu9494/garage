@@ -8,7 +8,7 @@ from garage import _Default, log_performance, make_optimizer
 from garage.np import obtain_evaluation_samples
 from garage.np.algos import RLAlgorithm
 from garage.sampler import LocalSampler
-from garage.tf.misc import tensor_utils
+from garage.tf import compile_function, get_target_ops
 
 
 class DQN(RLAlgorithm):
@@ -120,12 +120,12 @@ class DQN(RLAlgorithm):
             done_t_ph = tf.compat.v1.placeholder(tf.float32, None, name='done')
 
             with tf.name_scope('update_ops'):
-                target_update_op = tensor_utils.get_target_ops(
+                target_update_op = get_target_ops(
                     self._qf.get_global_vars(),
                     self._target_qf.get_global_vars())
 
-            self._qf_update_ops = tensor_utils.compile_function(
-                inputs=[], outputs=target_update_op)
+            self._qf_update_ops = compile_function(inputs=[],
+                                                   outputs=target_update_op)
 
             with tf.name_scope('td_error'):
                 # Q-value of the selected action
@@ -181,12 +181,11 @@ class DQN(RLAlgorithm):
                     optimize_loss = qf_optimizer.minimize(
                         loss, var_list=self._qf.get_trainable_vars())
 
-            self._train_qf = tensor_utils.compile_function(
-                inputs=[
-                    self._qf.input, action_t_ph, reward_t_ph, done_t_ph,
-                    self._target_qf.input
-                ],
-                outputs=[loss, optimize_loss])
+            self._train_qf = compile_function(inputs=[
+                self._qf.input, action_t_ph, reward_t_ph, done_t_ph,
+                self._target_qf.input
+            ],
+                                              outputs=[loss, optimize_loss])
 
     def train(self, runner):
         """Obtain samplers and start actual training for each epoch.

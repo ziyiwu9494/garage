@@ -13,7 +13,7 @@ from garage import _Default, log_performance, make_optimizer
 from garage.np import obtain_evaluation_samples
 from garage.np.algos import RLAlgorithm
 from garage.sampler import LocalSampler
-from garage.tf.misc import tensor_utils
+from garage.tf import compile_function, get_target_ops
 
 
 class TD3(RLAlgorithm):
@@ -174,34 +174,33 @@ class TD3(RLAlgorithm):
                                                         actions,
                                                         name='qf')
 
-            self.target_policy_f_prob_online = tensor_utils.compile_function(
+            self.target_policy_f_prob_online = compile_function(
                 inputs=[obs], outputs=policy_network_outputs)
 
-            self.target_qf_f_prob_online = tensor_utils.compile_function(
+            self.target_qf_f_prob_online = compile_function(
                 inputs=[obs, actions], outputs=target_qf_outputs)
 
-            self.target_qf2_f_prob_online = tensor_utils.compile_function(
+            self.target_qf2_f_prob_online = compile_function(
                 inputs=[obs, actions], outputs=target_qf2_outputs)
 
             # Set up target init and update functions
             with tf.name_scope('setup_target'):
-                policy_init_op, policy_update_op = tensor_utils.get_target_ops(
+                policy_init_op, policy_update_op = get_target_ops(
                     self.policy.get_global_vars(),
                     self._target_policy.get_global_vars(), self._tau)
-                qf_init_ops, qf_update_ops = tensor_utils.get_target_ops(
+                qf_init_ops, qf_update_ops = get_target_ops(
                     self.qf.get_global_vars(),
                     self._target_qf.get_global_vars(), self._tau)
-                qf2_init_ops, qf2_update_ops = tensor_utils.get_target_ops(
+                qf2_init_ops, qf2_update_ops = get_target_ops(
                     self.qf2.get_global_vars(),
                     self._target_qf2.get_global_vars(), self._tau)
                 target_init_op = policy_init_op + qf_init_ops + qf2_init_ops
                 target_update_op = (policy_update_op + qf_update_ops +
                                     qf2_update_ops)
 
-            f_init_target = tensor_utils.compile_function(
-                inputs=[], outputs=target_init_op)
-            f_update_target = tensor_utils.compile_function(
-                inputs=[], outputs=target_update_op)
+            f_init_target = compile_function(inputs=[], outputs=target_init_op)
+            f_update_target = compile_function(inputs=[],
+                                               outputs=target_update_op)
 
             # Set up policy training function
             next_action = self.policy.build(obs, name='policy_action')
@@ -219,7 +218,7 @@ class TD3(RLAlgorithm):
                 policy_train_op = policy_optimizer.minimize(
                     action_loss, var_list=self.policy.get_trainable_vars())
 
-            f_train_policy = tensor_utils.compile_function(
+            f_train_policy = compile_function(
                 inputs=[obs], outputs=[policy_train_op, action_loss])
 
             # Set up qf training function
@@ -241,10 +240,10 @@ class TD3(RLAlgorithm):
                 qf2_train_op = qf_optimizer.minimize(
                     qval2_loss, var_list=self.qf2.get_trainable_vars())
 
-            f_train_qf = tensor_utils.compile_function(
+            f_train_qf = compile_function(
                 inputs=[y, obs, actions],
                 outputs=[qf_train_op, qval1_loss, qval])
-            f_train_qf2 = tensor_utils.compile_function(
+            f_train_qf2 = compile_function(
                 inputs=[y, obs, actions],
                 outputs=[qf2_train_op, qval2_loss, q2val])
 
