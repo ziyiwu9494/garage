@@ -7,6 +7,7 @@ import joblib
 import tensorflow as tf
 
 from garage.sampler.utils import rollout
+from pyvirtualdisplay import Display
 
 
 def query_yes_no(question, default='yes'):
@@ -42,7 +43,8 @@ def query_yes_no(question, default='yes'):
 
 
 if __name__ == '__main__':
-
+    display = Display(visible=0, size=(1400, 900))
+    display.start()
     parser = argparse.ArgumentParser()
     parser.add_argument('file', type=str, help='path to the snapshot file')
     parser.add_argument('--max_path_length',

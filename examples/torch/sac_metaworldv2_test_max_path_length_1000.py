@@ -21,7 +21,7 @@ import garage.torch.utils as tu
 
 _SEED = None
 _GPU = None
-_ENV_NAME = ""
+_ENV_NAME = ''
 
 @click.command()
 @click.option('--seed', '_seed', type=int, default=np.random.randint(0, 1000))
@@ -52,7 +52,7 @@ def get_args(_seed=1, _gpu=None, _env_name=None):
 
         """
         global _SEED, _GPU, _ENV_NAME
-        not_in_mw = "the env_name specified is not a metaworld environment"
+        not_in_mw = 'the env_name specified is not a metaworld environment'
         assert _ENV_NAME in ALL_ENVIRONMENTS, not_in_mw
         deterministic.set_seed(_SEED)
         runner = LocalRunner(snapshot_config=ctxt)
