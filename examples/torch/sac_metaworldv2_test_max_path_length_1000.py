@@ -63,6 +63,8 @@ def get_args(_seed=1, _gpu=None, _env_name=None):
                 task_type = name
                 if task_type == 'pick-place':
                     task_type = 'pick_place'
+        if _ENV_NAME == 'push-back-v1':
+            task_type=None
         if task_type:
             env = GarageEnv(normalize(env_cls(random_init=False, task_type=task_type)))
         else:
@@ -100,14 +102,14 @@ def get_args(_seed=1, _gpu=None, _env_name=None):
                 discount=0.99,
                 buffer_batch_size=512,
                 reward_scale=1.,
-                steps_per_epoch=20,
+                steps_per_epoch=40,
                 num_evaluation_trajectories=10)
 
         if _GPU is not None:
             tu.set_gpu_mode(True, _GPU)
         sac.to()
         runner.setup(algo=sac, env=env, sampler_cls=LocalSampler)
-        runner.train(n_epochs=150, batch_size=batch_size)
+        runner.train(n_epochs=250, batch_size=batch_size)
     sac_metaworldv2_test_max_path_length_1000()
 
 get_args()
