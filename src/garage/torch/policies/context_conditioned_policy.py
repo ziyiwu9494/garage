@@ -46,57 +46,59 @@ class ContextConditionedPolicy(nn.Module):
         self._use_information_bottleneck = use_information_bottleneck
         self._use_next_obs = use_next_obs
 
-        # initialize buffers for z distribution and z
-        # use buffers so latent context can be saved along with model weights
-        # z_means and z_vars are the params for the gaussian distribution
-        # over latent task belief maintained in the policy; z is a sample from
-        # this distribution that the policy is conditioned on
-        self.register_buffer('z', torch.zeros(1, latent_dim))
-        self.register_buffer('z_means', torch.zeros(1, latent_dim))
-        self.register_buffer('z_vars', torch.zeros(1, latent_dim))
-
-        self.reset_belief()
-
     def reset_belief(self, num_tasks=1):
         r"""Reset :math:`q(z \| c)` to the prior and sample a new z from the prior.
 
         Args:
             num_tasks (int): Number of tasks.
 
+        Returns:
+            torch.Tensor: z, the context encoded as a latent variable.
+            torch.Tensor: z, the context encoded as a latent variable.
+
         """
         # reset distribution over z to the prior
         mu = torch.zeros(num_tasks, self._latent_dim).to(global_device())
         if self._use_information_bottleneck:
-            var = torch.ones(num_tasks, self._latent_dim).to(global_device())
+            z_var = torch.ones(num_tasks, self._latent_dim).to(global_device())
+            z = self.sample_from_belief(mu, z_var)
         else:
-            var = torch.zeros(num_tasks, self._latent_dim).to(global_device())
-        self.z_means = mu
-        self.z_vars = var
-        # sample a new z from the prior
-        self.sample_from_belief()
-        # reset the context collected so far
-        self._context = None
-        # reset any hidden state in the encoder network (relevant for RNN)
-        self._context_encoder.reset()
+            z = mu
+            z_var = None
+        return z, mu, z_var
 
-    def sample_from_belief(self):
-        """Sample z using distributions from current means and variances."""
+    def sample_from_belief(self, z_means, z_vars):
+        """Sample z using distributions from current means and variances.
+
+        Args:
+            z_means (torch.Tensor): means of z distribution.
+            z_vars (torch.Tensor): variances of z distribution.
+
+        Returns:
+            torch.Tensor: The sampled belief.
+
+        """
         if self._use_information_bottleneck:
             posteriors = [
-                torch.distributions.Normal(m, torch.sqrt(s)) for m, s in zip(
-                    torch.unbind(self.z_means), torch.unbind(self.z_vars))
+                torch.distributions.Normal(m, torch.sqrt(s))
+                for m, s in zip(torch.unbind(z_means), torch.unbind(z_vars))
             ]
             z = [d.rsample() for d in posteriors]
-            self.z = torch.stack(z)
+            return torch.stack(z)
         else:
-            self.z = self.z_means
+            return z_means
 
-    def update_context(self, timestep):
+    def update_context(self, timestep, context=None):
         """Append single transition to the current context.
 
         Args:
             timestep (garage._dtypes.TimeStep): Timestep containing transition
                 information to be added to context.
+            context (torch.Tensor or None): Context so far (or None, if
+                starting a new context).
+
+        Returns:
+            torch.Tensor: the new context.
 
         """
         o = torch.as_tensor(timestep.observation[None, None, ...],
@@ -113,10 +115,10 @@ class ContextConditionedPolicy(nn.Module):
         else:
             data = torch.cat([o, a, r], dim=2)
 
-        if self._context is None:
-            self._context = data
+        if context is None:
+            return data
         else:
-            self._context = torch.cat([self._context, data], dim=1)
+            return torch.cat([context, data], dim=1)
 
     def infer_posterior(self, context):
         r"""Compute :math:`q(z \| c)` as a function of input context and sample new z.
@@ -128,10 +130,14 @@ class ContextConditionedPolicy(nn.Module):
                 observation if next observation is used in context. Otherwise,
                 C is the combined size of observation, action, and reward.
 
+        Returns:
+            torch.Tensor: z, the context encoded in a latent variable.
+
         """
-        params = self._context_encoder.forward(context)
+        params, _ = self._context_encoder.forward(context, state=None)
         params = params.view(context.size(0), -1,
                              self._context_encoder.output_dim)
+        z_vars = None
         # with probabilistic z, predict mean and variance of q(z | c)
         if self._use_information_bottleneck:
             mu = params[..., :self._latent_dim]
@@ -140,11 +146,13 @@ class ContextConditionedPolicy(nn.Module):
                 product_of_gaussians(m, s)
                 for m, s in zip(torch.unbind(mu), torch.unbind(sigma_squared))
             ]
-            self.z_means = torch.stack([p[0] for p in z_params])
-            self.z_vars = torch.stack([p[1] for p in z_params])
+            z_means = torch.stack([p[0] for p in z_params])
+            z_vars = torch.stack([p[1] for p in z_params])
+            z = self.sample_from_belief(z_means, z_vars)
         else:
-            self.z_means = torch.mean(params, dim=1)
-        self.sample_from_belief()
+            z_means = torch.mean(params, dim=1)
+            z = torch.mean(params, dim=1)
+        return z, z_means, z_vars
 
     # pylint: disable=arguments-differ
     def forward(self, obs, context):
@@ -172,9 +180,7 @@ class ContextConditionedPolicy(nn.Module):
                 L is the latent dimension.
 
         """
-        self.infer_posterior(context)
-        self.sample_from_belief()
-        task_z = self.z
+        task_z, z_means, z_vars = self.infer_posterior(context)
 
         # task, batch
         t, b, _ = obs.size()
@@ -191,14 +197,24 @@ class ContextConditionedPolicy(nn.Module):
         mean = dist.mean.to('cpu').detach().numpy()
         log_std = (dist.variance**.5).log().to('cpu').detach().numpy()
 
-        return (actions, mean, log_std, log_pi, pre_tanh), task_z
+        return {
+            'actions': actions,
+            'mean_action': mean,
+            'log_std_action': log_std,
+            'log_prob': log_pi,
+            'pre_tanh': pre_tanh,
+            'task_z': task_z,
+            'z_means': z_means,
+            'z_vars': z_vars
+        }
 
-    def get_action(self, obs):
+    def get_action(self, obs, z):
         """Sample action from the policy, conditioned on the task embedding.
 
         Args:
             obs (torch.Tensor): Observation values, with shape :math:`(1, O)`.
                 O is the size of the flattened observation space.
+            z (torch.Tensor): Context encoded as a latent variable.
 
         Returns:
             torch.Tensor: Output action value, with shape :math:`(1, A)`.
@@ -209,16 +225,20 @@ class ContextConditionedPolicy(nn.Module):
                     of the distribution.
 
         """
-        z = self.z
-        obs = torch.as_tensor(obs[None], device=global_device()).float()
-        obs_in = torch.cat([obs, z], dim=1)
-        action, info = self._policy.get_action(obs_in)
-        action = np.squeeze(action, axis=0)
-        info['mean'] = np.squeeze(info['mean'], axis=0)
-        return action, info
+        with torch.no_grad():
+            obs = torch.as_tensor(obs[None], device=global_device()).float()
+            obs_in = torch.cat([obs, z], dim=1)
+            action, info = self._policy.get_action(obs_in)
+            action = np.squeeze(action, axis=0)
+            info['mean'] = np.squeeze(info['mean'], axis=0)
+            return action, info
 
-    def compute_kl_div(self):
+    def compute_kl_div(self, z_means, z_vars):
         r"""Compute :math:`KL(q(z|c) \| p(z))`.
+
+        Args:
+            z_means (torch.Tensor): means of z distribution.
+            z_vars (torch.Tensor): variances of z distribution.
 
         Returns:
             float: :math:`KL(q(z|c) \| p(z))`.
@@ -228,8 +248,8 @@ class ContextConditionedPolicy(nn.Module):
             torch.zeros(self._latent_dim).to(global_device()),
             torch.ones(self._latent_dim).to(global_device()))
         posteriors = [
-            torch.distributions.Normal(mu, torch.sqrt(var)) for mu, var in zip(
-                torch.unbind(self.z_means), torch.unbind(self.z_vars))
+            torch.distributions.Normal(mu, torch.sqrt(var))
+            for mu, var in zip(torch.unbind(z_means), torch.unbind(z_vars))
         ]
         kl_divs = [
             torch.distributions.kl.kl_divergence(post, prior)
@@ -247,17 +267,3 @@ class ContextConditionedPolicy(nn.Module):
 
         """
         return [self._context_encoder, self._policy]
-
-    @property
-    def context(self):
-        """Return context.
-
-        Returns:
-            torch.Tensor: Context values, with shape :math:`(X, N, C)`.
-                X is the number of tasks. N is batch size. C is the combined
-                size of observation, action, reward, and next observation if
-                next observation is used in context. Otherwise, C is the
-                combined size of observation, action, and reward.
-
-        """
-        return self._context

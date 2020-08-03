@@ -20,9 +20,9 @@ from garage.torch.value_functions import GaussianMLPValueFunction
 @click.option('--seed', default=1)
 @click.option('--epochs', default=500)
 @click.option('--batch_size', default=1024)
-@click.option('--n_worker', default=psutil.cpu_count(logical=False))
+@click.option('--n_workers', default=psutil.cpu_count(logical=False))
 @wrap_experiment(snapshot_mode='all')
-def mtppo_metaworld_mt50(ctxt, seed, epochs, batch_size, n_worker):
+def mtppo_metaworld_mt50(ctxt, seed, epochs, batch_size, n_workers):
     """Set up environment and algorithm and run the task.
 
     Args:
@@ -32,7 +32,7 @@ def mtppo_metaworld_mt50(ctxt, seed, epochs, batch_size, n_worker):
             determinism.
         epochs (int): Number of training epochs.
         batch_size (int): Number of environment steps in one batch.
-        n_worker (int): The number of workers the sampler should use.
+        n_workers (int): The number of workers the sampler should use.
 
     """
     set_seed(seed)
@@ -66,7 +66,7 @@ def mtppo_metaworld_mt50(ctxt, seed, epochs, batch_size, n_worker):
                lr_clip_range=0.2)
 
     runner = LocalRunner(ctxt)
-    runner.setup(algo, env, n_workers=n_worker)
+    runner.setup(algo, env, n_workers=n_workers)
     runner.train(n_epochs=epochs, batch_size=batch_size)
 
 

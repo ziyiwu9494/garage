@@ -1,9 +1,11 @@
 """An MLP network for encoding context of RL tasks."""
 import akro
 import numpy as np
+import torch
 
 from garage import InOutSpec
 from garage.np.embeddings import Encoder
+from garage.torch import global_device
 from garage.torch.modules import MLPModule
 
 
@@ -58,18 +60,32 @@ class MLPEncoder(MLPModule, Encoder):
         """int: Dimension of the encoder output (embedding)."""
         return self._output_dim
 
-    def reset(self, do_resets=None):
-        """Reset the encoder.
-
-        This is effective only to recurrent encoder. do_resets is effective
-        only to vectoried encoder.
-
-        For a vectorized encoder, do_resets is an array of boolean indicating
-        which internal states to be reset. The length of do_resets should be
-        equal to the length of inputs.
+    # pylint: disable=no-self-use
+    def initial_state(self, state=None, do_resets=None):
+        """Get the initial state of the encoder.
 
         Args:
-            do_resets (numpy.ndarray): Bool array indicating which states
-                to be reset.
+            state (torch.Tensor): State to use for encoding.
+            do_resets (list[bool] or None): Which parts of a batched state to
+                reset.
+
+        Returns:
+            torch.Tensor: The initial state.
 
         """
+        del state
+        return torch.zeros(len(do_resets)).to(global_device())
+
+    # pylint: disable=arguments-differ
+    def forward(self, input_values, state):
+        """Compute the encoding.
+
+        Args:
+            input_values (torch.Tensor): Input to encode.
+            state (torch.Tensor): State to use for encoding.
+
+        Returns:
+            tuple[torch.Tensor, torch.Tensor]: The encoded value and the state.
+
+        """
+        return super().forward(input_values), state

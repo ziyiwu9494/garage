@@ -2,14 +2,14 @@
 """This is an example to train MAML-TRPO on ML45 environment."""
 # pylint: disable=no-value-for-parameter
 import click
-import metaworld.benchmarks as mwb
+import metaworld
 import torch
 
 from garage import wrap_experiment
-from garage.envs import GymEnv, normalize
+from garage.envs import normalize
 from garage.experiment import LocalRunner, MetaEvaluator
 from garage.experiment.deterministic import set_seed
-from garage.experiment.task_sampler import EnvPoolSampler
+from garage.experiment.task_sampler import MetaWorldTaskSampler
 from garage.np.baselines import LinearFeatureBaseline
 from garage.torch.algos import MAMLTRPO
 from garage.torch.policies import GaussianMLPPolicy
@@ -37,8 +37,15 @@ def maml_trpo_metaworld_ml45(ctxt, seed, epochs, episodes_per_task,
 
     """
     set_seed(seed)
-    env = normalize(GymEnv(mwb.ML45.get_train_tasks()),
-                    expected_action_scale=10.)
+    ml45 = metaworld.ML45()
+
+    # pylint: disable=missing-return-doc,missing-return-type-doc
+    def wrap(env, _):
+        return normalize(env, expected_action_scale=10.0)
+
+    train_task_sampler = MetaWorldTaskSampler(ml45, 'train', wrap)
+    test_task_sampler = MetaWorldTaskSampler(ml45, 'test', wrap)
+    env = train_task_sampler.sample(1)[0]()
 
     policy = GaussianMLPPolicy(
         env_spec=env.spec,
@@ -51,19 +58,12 @@ def maml_trpo_metaworld_ml45(ctxt, seed, epochs, episodes_per_task,
 
     max_episode_length = 100
 
-    test_task_names = mwb.ML45.get_test_tasks().all_task_names
-    test_tasks = [
-        normalize(GymEnv(mwb.ML45.from_task(task)), expected_action_scale=10.)
-        for task in test_task_names
-    ]
-    test_sampler = EnvPoolSampler(test_tasks)
-
-    meta_evaluator = MetaEvaluator(test_task_sampler=test_sampler,
-                                   max_episode_length=max_episode_length,
-                                   n_test_tasks=len(test_task_names))
+    meta_evaluator = MetaEvaluator(test_task_sampler=test_task_sampler,
+                                   max_episode_length=max_episode_length)
 
     runner = LocalRunner(ctxt)
     algo = MAMLTRPO(env=env,
+                    task_sampler=train_task_sampler,
                     policy=policy,
                     value_function=value_function,
                     max_episode_length=max_episode_length,

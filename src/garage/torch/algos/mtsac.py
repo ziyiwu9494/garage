@@ -33,6 +33,9 @@ class MTSAC(SAC):
             agent is being trained in.
         num_tasks (int): The number of tasks being learned.
         max_episode_length (int): The max episode length of the algorithm.
+        max_episode_length_eval (int or None): Maximum length of episodes used
+            for off-policy evaluation. If None, defaults to
+            `max_episode_length`.
         eval_env (Environment): The environment used for collecting evaluation
             episodes.
         gradient_steps_per_itr (int): Number of optimization steps that should
@@ -79,6 +82,7 @@ class MTSAC(SAC):
         max_episode_length,
         eval_env,
         gradient_steps_per_itr,
+        max_episode_length_eval=None,
         fixed_alpha=None,
         target_entropy=None,
         initial_log_entropy=0.,
@@ -100,6 +104,7 @@ class MTSAC(SAC):
                          replay_buffer=replay_buffer,
                          env_spec=env_spec,
                          max_episode_length=max_episode_length,
+                         max_episode_length_eval=max_episode_length_eval,
                          gradient_steps_per_itr=gradient_steps_per_itr,
                          fixed_alpha=fixed_alpha,
                          target_entropy=target_entropy,
@@ -178,11 +183,12 @@ class MTSAC(SAC):
 
         """
         eval_eps = []
-        for _ in range(self._num_tasks):
+        for eval_env in self._eval_env:
             eval_eps.append(
                 obtain_evaluation_episodes(
                     self.policy,
-                    self._eval_env,
+                    eval_env,
+                    max_episode_length=self._max_episode_length_eval,
                     num_eps=self._num_evaluation_episodes))
         eval_eps = EpisodeBatch.concatenate(*eval_eps)
         last_return = log_multitask_performance(epoch, eval_eps,

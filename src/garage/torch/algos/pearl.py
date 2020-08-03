@@ -10,11 +10,11 @@ from dowel import logger
 import numpy as np
 import torch
 
-from garage import EnvSpec, InOutSpec, StepType, TimeStep
+from garage import EnvSpec, InOutSpec, TimeStep
 from garage.experiment import MetaEvaluator
 from garage.np.algos import MetaRLAlgorithm
 from garage.replay_buffer import PathBuffer
-from garage.sampler import DefaultWorker
+from garage.sampler import DefaultWorker, RaySampler
 from garage.torch import global_device
 from garage.torch.embeddings import MLPEncoder
 from garage.torch.policies import ContextConditionedPolicy
@@ -31,11 +31,10 @@ class PEARL(MetaRLAlgorithm):
     behavior to specific tasks.
 
     Args:
-        env (list[Environment]): Batch of sampled environment updates(
-            EnvUpdate), which, when invoked on environments, will configure
-            them with new tasks.
-        policy_class (type): Class implementing
-            :pyclass:`~ContextConditionedPolicy`
+        env_spec (garage.envs.EnvSpec): Environment specs to be augmented.
+        task_sampler (garage.experiment.TaskSampler): Task sampler.
+        policy_class (garage.torch.policies.Policy): Context-conditioned policy
+            class.
         encoder_class (garage.torch.embeddings.ContextEncoder): Encoder class
             for the encoder in context-conditioned policy.
         inner_policy (garage.torch.policies.Policy): Policy.
@@ -46,7 +45,7 @@ class PEARL(MetaRLAlgorithm):
         latent_dim (int): Size of latent context vector.
         encoder_hidden_sizes (list[int]): Output dimension of dense layer(s) of
             the context encoder.
-        test_env_sampler (garage.experiment.SetTaskSampler): Sampler for test
+        test_task_sampler (garage.experiment.SetTaskSampler): Sampler for test
             tasks.
         policy_lr (float): Policy learning rate.
         qf_lr (float): Q-function learning rate.
@@ -63,12 +62,11 @@ class PEARL(MetaRLAlgorithm):
             deterministic.
         use_next_obs_in_context (bool): Whether or not to use next observation
             in distinguishing between tasks.
+        sampler_cls (type): Type of sampler to construct.
         meta_batch_size (int): Meta batch size.
         num_steps_per_epoch (int): Number of iterations per epoch.
         num_initial_steps (int): Number of transitions obtained per task before
             training.
-        num_tasks_sample (int): Number of random tasks to obtain data for each
-            iteration.
         num_steps_prior (int): Number of transitions to obtain per task with
             z ~ prior.
         num_steps_posterior (int): Number of transitions to obtain per task
@@ -92,7 +90,8 @@ class PEARL(MetaRLAlgorithm):
 
     # pylint: disable=too-many-statements
     def __init__(self,
-                 env,
+                 env_spec,
+                 task_sampler,
                  inner_policy,
                  qf,
                  vf,
@@ -100,7 +99,7 @@ class PEARL(MetaRLAlgorithm):
                  num_test_tasks,
                  latent_dim,
                  encoder_hidden_sizes,
-                 test_env_sampler,
+                 test_task_sampler,
                  policy_class=ContextConditionedPolicy,
                  encoder_class=MLPEncoder,
                  policy_lr=3E-4,
@@ -115,10 +114,10 @@ class PEARL(MetaRLAlgorithm):
                  optimizer_class=torch.optim.Adam,
                  use_information_bottleneck=True,
                  use_next_obs_in_context=False,
+                 sampler_cls=RaySampler,
                  meta_batch_size=64,
                  num_steps_per_epoch=1000,
                  num_initial_steps=100,
-                 num_tasks_sample=100,
                  num_steps_prior=100,
                  num_steps_posterior=0,
                  num_extra_rl_steps_posterior=100,
@@ -131,12 +130,11 @@ class PEARL(MetaRLAlgorithm):
                  reward_scale=1,
                  update_post_train=1):
 
-        self._env = env
+        self._env_spec = env_spec
         self._qf1 = qf
         self._qf2 = copy.deepcopy(qf)
         self._vf = vf
         self._num_train_tasks = num_train_tasks
-        self._num_test_tasks = num_test_tasks
         self._latent_dim = latent_dim
 
         self._policy_mean_reg_coeff = policy_mean_reg_coeff
@@ -146,11 +144,11 @@ class PEARL(MetaRLAlgorithm):
         self._kl_lambda = kl_lambda
         self._use_information_bottleneck = use_information_bottleneck
         self._use_next_obs_in_context = use_next_obs_in_context
+        self._sampler_cls = sampler_cls
 
         self._meta_batch_size = meta_batch_size
         self._num_steps_per_epoch = num_steps_per_epoch
         self._num_initial_steps = num_initial_steps
-        self._num_tasks_sample = num_tasks_sample
         self._num_steps_prior = num_steps_prior
         self._num_steps_posterior = num_steps_posterior
         self._num_extra_rl_steps_posterior = num_extra_rl_steps_posterior
@@ -162,18 +160,21 @@ class PEARL(MetaRLAlgorithm):
         self._replay_buffer_size = replay_buffer_size
         self._reward_scale = reward_scale
         self._update_post_train = update_post_train
-        self._task_idx = None
+        self._task_sampler = task_sampler
+        self._next_task = 0
+        self._train_tasks = task_sampler.sample(num_train_tasks)
+        assert num_train_tasks % meta_batch_size == 0
 
         self._is_resuming = False
 
         worker_args = dict(deterministic=True, accum_context=True)
-        self._evaluator = MetaEvaluator(test_task_sampler=test_env_sampler,
+        self._evaluator = MetaEvaluator(test_task_sampler=test_task_sampler,
                                         max_episode_length=max_episode_length,
                                         worker_class=PEARLWorker,
                                         worker_args=worker_args,
                                         n_test_tasks=num_test_tasks)
 
-        encoder_spec = self.get_env_spec(env[0](), latent_dim, 'encoder')
+        encoder_spec = self.get_env_spec(env_spec, latent_dim, 'encoder')
         encoder_in_dim = int(np.prod(encoder_spec.input_space.shape))
         encoder_out_dim = int(np.prod(encoder_spec.output_space.shape))
         context_encoder = encoder_class(input_dim=encoder_in_dim,
@@ -262,55 +263,54 @@ class PEARL(MetaRLAlgorithm):
                 such as snapshotting and sampler control.
 
         """
+        sampler = runner.make_sampler(
+            self._sampler_cls,
+            max_episode_length=self.max_episode_length,
+            n_workers=self._meta_batch_size,
+            worker_class=PEARLWorker)
         for _ in runner.step_epochs():
             epoch = runner.step_itr / self._num_steps_per_epoch
+            task_indices = range(self._next_task,
+                                 self._next_task + self._meta_batch_size)
+            self._next_task += self._meta_batch_size
+            self._next_task %= len(self._train_tasks)
 
             # obtain initial set of samples from all train tasks
             if epoch == 0 or self._is_resuming:
-                for idx in range(self._num_train_tasks):
-                    self._task_idx = idx
-                    self._obtain_samples(runner, epoch,
-                                         self._num_initial_steps, np.inf)
-                    self._is_resuming = False
+                self._obtain_samples(runner, sampler, task_indices,
+                                     self._num_initial_steps, np.inf)
+                self._is_resuming = False
 
             # obtain samples from random tasks
-            for _ in range(self._num_tasks_sample):
-                idx = np.random.randint(self._num_train_tasks)
-                self._task_idx = idx
-                self._context_replay_buffers[idx].clear()
-                # obtain samples with z ~ prior
-                if self._num_steps_prior > 0:
-                    self._obtain_samples(runner, epoch, self._num_steps_prior,
-                                         np.inf)
-                # obtain samples with z ~ posterior
-                if self._num_steps_posterior > 0:
-                    self._obtain_samples(runner, epoch,
-                                         self._num_steps_posterior,
-                                         self._update_post_train)
-                # obtain extras samples for RL training but not encoder
-                if self._num_extra_rl_steps_posterior > 0:
-                    self._obtain_samples(runner,
-                                         epoch,
-                                         self._num_extra_rl_steps_posterior,
-                                         self._update_post_train,
-                                         add_to_enc_buffer=False)
+
+            for context_buffer in self._context_replay_buffers.values():
+                context_buffer.clear()
+            # obtain samples with z ~ prior
+            if self._num_steps_prior > 0:
+                self._obtain_samples(runner, sampler, task_indices,
+                                     self._num_steps_prior, np.inf)
+            # obtain samples with z ~ posterior
+            if self._num_steps_posterior > 0:
+                self._obtain_samples(runner, sampler, task_indices,
+                                     self._num_steps_posterior,
+                                     self._update_post_train)
+            # obtain extras samples for RL training but not encoder
+            if self._num_extra_rl_steps_posterior > 0:
+                self._obtain_samples(runner,
+                                     sampler,
+                                     task_indices,
+                                     self._num_extra_rl_steps_posterior,
+                                     self._update_post_train,
+                                     add_to_enc_buffer=False)
 
             logger.log('Training...')
             # sample train tasks and optimize networks
-            self._train_once()
+            self._optimize_policy(task_indices)
             runner.step_itr += 1
 
             logger.log('Evaluating...')
             # evaluate
-            self._policy.reset_belief()
             self._evaluator.evaluate(self)
-
-    def _train_once(self):
-        """Perform one iteration of training."""
-        for _ in range(self._num_steps_per_epoch):
-            indices = np.random.choice(range(self._num_train_tasks),
-                                       self._meta_batch_size)
-            self._optimize_policy(indices)
 
     def _optimize_policy(self, indices):
         """Perform algorithm optimizing.
@@ -321,13 +321,17 @@ class PEARL(MetaRLAlgorithm):
         """
         num_tasks = len(indices)
         context = self._sample_context(indices)
-        # clear context and reset belief of policy
-        self._policy.reset_belief(num_tasks=num_tasks)
 
         # data shape is (task, batch, feat)
         obs, actions, rewards, next_obs, terms = self._sample_data(indices)
-        policy_outputs, task_z = self._policy(obs, context)
-        new_actions, policy_mean, policy_log_std, log_pi = policy_outputs[:4]
+        policy_outputs = self._policy(obs, context)
+        new_actions = policy_outputs['actions']
+        policy_mean = policy_outputs['mean_action']
+        policy_log_std = policy_outputs['log_std_action']
+        log_pi = policy_outputs['log_prob']
+        task_z = policy_outputs['task_z']
+        z_means = policy_outputs['z_means']
+        z_vars = policy_outputs['z_vars']
 
         # flatten out the task dimension
         t, b, _ = obs.size()
@@ -346,7 +350,7 @@ class PEARL(MetaRLAlgorithm):
         # KL constraint on z if probabilistic
         self.context_optimizer.zero_grad()
         if self._use_information_bottleneck:
-            kl_div = self._policy.compute_kl_div()
+            kl_div = self._policy.compute_kl_div(z_means, z_vars)
             kl_loss = self._kl_lambda * kl_div
             kl_loss.backward(retain_graph=True)
 
@@ -385,7 +389,7 @@ class PEARL(MetaRLAlgorithm):
 
         mean_reg_loss = self._policy_mean_reg_coeff * (policy_mean**2).mean()
         std_reg_loss = self._policy_std_reg_coeff * (policy_log_std**2).mean()
-        pre_tanh_value = policy_outputs[-1]
+        pre_tanh_value = policy_outputs['pre_tanh']
         pre_activation_reg_loss = self._policy_pre_activation_coeff * (
             (pre_tanh_value**2).sum(dim=1).mean())
         policy_reg_loss = (mean_reg_loss + std_reg_loss +
@@ -398,7 +402,8 @@ class PEARL(MetaRLAlgorithm):
 
     def _obtain_samples(self,
                         runner,
-                        itr,
+                        sampler,
+                        task_indices,
                         num_samples,
                         update_posterior_rate,
                         add_to_enc_buffer=True):
@@ -406,7 +411,8 @@ class PEARL(MetaRLAlgorithm):
 
         Args:
             runner (LocalRunner): LocalRunner.
-            itr (int): Index of iteration (epoch).
+            sampler (garage.sampler.Sampler): Sampler to use to obtain samples.
+            task_indices (list[int]): List of task indices to sample from.
             num_samples (int): Number of samples to obtain.
             update_posterior_rate (int): How often (in episodes) to infer
                 posterior of policy.
@@ -414,45 +420,41 @@ class PEARL(MetaRLAlgorithm):
                 buffer.
 
         """
-        self._policy.reset_belief()
+        task_batch = [
+            self._train_tasks[task_index] for task_index in task_indices
+        ]
+        _, z_means, z_vars = self._policy.reset_belief()
+        policy_updates = {
+            'z_means': z_means,
+            'z_vars': z_vars,
+            'inner_update': self._policy
+        }
         total_samples = 0
 
-        if update_posterior_rate != np.inf:
-            num_samples_per_batch = (update_posterior_rate *
-                                     self.max_episode_length)
-        else:
-            num_samples_per_batch = num_samples
-
         while total_samples < num_samples:
-            paths = runner.obtain_samples(itr, num_samples_per_batch,
-                                          self._policy,
-                                          self._env[self._task_idx])
-            total_samples += sum([len(path['rewards']) for path in paths])
+            episodes = sampler.obtain_exact_episodes(
+                n_eps_per_worker=1,
+                agent_update=policy_updates,
+                env_update=task_batch)
+            runner.total_env_steps += sum(episodes.lengths)
+            total_samples += sum(episodes.lengths)
 
-            for path in paths:
-                p = {
-                    'observations':
-                    path['observations'],
-                    'actions':
-                    path['actions'],
-                    'rewards':
-                    path['rewards'].reshape(-1, 1),
-                    'next_observations':
-                    path['next_observations'],
-                    'dones':
-                    np.array([
-                        step_type == StepType.TERMINAL
-                        for step_type in path['step_types']
-                    ]).reshape(-1, 1)
-                }
-                self._replay_buffers[self._task_idx].add_path(p)
+            for task_index, episode in zip(task_indices, episodes.split()):
+                self._replay_buffers[task_index].add_episode_batch(episode)
 
                 if add_to_enc_buffer:
-                    self._context_replay_buffers[self._task_idx].add_path(p)
+                    self._context_replay_buffers[task_index].add_episode_batch(
+                        episode)
 
             if update_posterior_rate != np.inf:
-                context = self._sample_context(self._task_idx)
-                self._policy.infer_posterior(context)
+                policy_updates = []
+                for task_index in task_indices:
+                    context = self._sample_context(task_index)
+                    _, z_means, z_vars = self._policy.infer_posterior(context)
+                    policy_updates.append({
+                        'z_means': z_means,
+                        'z_vars': z_vars,
+                    })
 
     def _sample_data(self, indices):
         """Sample batch of training data from a list of tasks.
@@ -466,7 +468,7 @@ class PEARL(MetaRLAlgorithm):
             torch.Tensor: Actions, with shape :math:`(X, N, A^*)`.
             torch.Tensor: Rewards, with shape :math:`(X, N, 1)`.
             torch.Tensor: Next obervations, with shape :math:`(X, N, O^*)`.
-            torch.Tensor: Dones, with shape :math:`(X, N, 1)`.
+            torch.Tensor: terminals, with shape :math:`(X, N, 1)`.
 
         """
         # transitions sampled randomly from replay buffer
@@ -479,14 +481,14 @@ class PEARL(MetaRLAlgorithm):
                 a = batch['actions'][np.newaxis]
                 r = batch['rewards'][np.newaxis]
                 no = batch['next_observations'][np.newaxis]
-                d = batch['dones'][np.newaxis]
+                d = batch['terminals'][np.newaxis]
                 initialized = True
             else:
                 o = np.vstack((o, batch['observations'][np.newaxis]))
                 a = np.vstack((a, batch['actions'][np.newaxis]))
                 r = np.vstack((r, batch['rewards'][np.newaxis]))
                 no = np.vstack((no, batch['next_observations'][np.newaxis]))
-                d = np.vstack((d, batch['dones'][np.newaxis]))
+                d = np.vstack((d, batch['terminals'][np.newaxis]))
 
         o = torch.as_tensor(o, device=global_device()).float()
         a = torch.as_tensor(a, device=global_device()).float()
@@ -579,7 +581,12 @@ class PEARL(MetaRLAlgorithm):
                 meta-RL adaptation.
 
         """
-        return self._policy
+        _, z_means, z_vars = self._policy.reset_belief()
+        return {
+            'z_means': z_means,
+            'z_vars': z_vars,
+            'inner_update': self._policy
+        }
 
     def adapt_policy(self, exploration_policy, exploration_episodes):
         """Produce a policy adapted for a task.
@@ -605,9 +612,13 @@ class PEARL(MetaRLAlgorithm):
         r = exploration_episodes.rewards.reshape(total_steps, 1)
         ctxt = np.hstack((o, a, r)).reshape(1, total_steps, -1)
         context = torch.as_tensor(ctxt, device=global_device()).float()
-        self._policy.infer_posterior(context)
+        _, z_means, z_vars = self._policy.infer_posterior(context)
 
-        return self._policy
+        return {
+            'z_means': z_means,
+            'z_vars': z_vars,
+            'inner_update': self._policy
+        }
 
     def to(self, device=None):
         """Put all the networks within the model on device.
@@ -713,11 +724,36 @@ class PEARLWorker(DefaultWorker):
         super().__init__(seed=seed,
                          max_episode_length=max_episode_length,
                          worker_number=worker_number)
+        self._z_means = None
+        self._z_vars = None
+        self._z = None
+        self._context = None
+
+    def update_agent(self, agent_update):
+        """Update an agent, assuming it is a `ContextConditionedPolicy`.
+
+        Args:
+            agent_update (np.ndarray or dict or Policy): If a dict containing
+                `z_means`, should can also contain `z_vars` and `inner_update`.
+                Otherwise may be any other type of agent update allowed by
+                DefaultWorker.update_agent.
+
+        """
+        if isinstance(agent_update, dict) and 'z_means' in agent_update:
+            self._z_means = agent_update['z_means']
+            self._z_vars = agent_update.get('z_vars', None)
+            inner_update = agent_update.get('inner_update')
+            if inner_update:
+                super().update_agent(inner_update)
+        else:
+            super().update_agent(agent_update)
 
     def start_episode(self):
         """Begin a new episode."""
         self._eps_length = 0
         self._prev_obs = self.env.reset()[0]
+        self._context = None
+        self._z = self.agent.sample_from_belief(self._z_means, self._z_vars)
 
     def step_episode(self):
         """Take a single time-step in the current episode.
@@ -728,10 +764,9 @@ class PEARLWorker(DefaultWorker):
 
         """
         if self._eps_length < self._max_episode_length:
-            a, agent_info = self.agent.get_action(self._prev_obs)
+            a, agent_info = self.agent.get_action(self._prev_obs, self._z)
             if self._deterministic:
                 a = agent_info['mean']
-            a, agent_info = self.agent.get_action(self._prev_obs)
             es = self.env.step(a)
             self._observations.append(self._prev_obs)
             self._env_steps.append(es)
@@ -743,25 +778,10 @@ class PEARLWorker(DefaultWorker):
                 s = TimeStep.from_env_step(env_step=es,
                                            last_observation=self._prev_obs,
                                            agent_info=agent_info)
-                self.agent.update_context(s)
+                self.agent.update_context(s, self._context)
             if not es.last:
                 self._prev_obs = es.observation
                 return False
         self._lengths.append(self._eps_length)
         self._last_observations.append(self._prev_obs)
         return True
-
-    def rollout(self):
-        """Sample a single episode of the agent in the environment.
-
-        Returns:
-            EpisodeBatch: The collected episode.
-
-        """
-        self.agent.sample_from_belief()
-        self.start_episode()
-        while not self.step_episode():
-            pass
-        self._agent_infos['context'] = [self.agent.z.detach().cpu().numpy()
-                                        ] * self._max_episode_length
-        return self.collect_episode()

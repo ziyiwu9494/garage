@@ -3,7 +3,7 @@ import pytest
 import torch
 
 from garage.envs import GymEnv, normalize
-from garage.experiment import deterministic, LocalRunner
+from garage.experiment import deterministic, LocalRunner, SetTaskSampler
 from garage.sampler import LocalSampler
 from garage.torch.algos import MAMLPPO
 from garage.torch.policies import GaussianMLPPolicy
@@ -34,6 +34,8 @@ class TestMAMLPPO:
         """Setup method which is called before every test."""
         self.env = normalize(GymEnv(HalfCheetahDirEnv()),
                              expected_action_scale=10.)
+        self.task_sampler = SetTaskSampler(lambda: normalize(
+            GymEnv(HalfCheetahDirEnv()), expected_action_scale=10.))
         self.policy = GaussianMLPPolicy(
             env_spec=self.env.spec,
             hidden_sizes=(64, 64),
@@ -57,6 +59,7 @@ class TestMAMLPPO:
         runner = LocalRunner(snapshot_config)
         algo = MAMLPPO(env=self.env,
                        policy=self.policy,
+                       task_sampler=self.task_sampler,
                        value_function=self.value_function,
                        max_episode_length=max_episode_length,
                        meta_batch_size=5,

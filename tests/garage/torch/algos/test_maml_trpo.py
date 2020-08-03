@@ -3,7 +3,7 @@ import pytest
 import torch
 
 from garage.envs import GymEnv, normalize
-from garage.experiment import LocalRunner
+from garage.experiment import LocalRunner, SetTaskSampler
 from garage.sampler import LocalSampler
 from garage.torch.algos import MAMLTRPO
 from garage.torch.policies import GaussianMLPPolicy
@@ -39,6 +39,8 @@ def test_maml_trpo_pendulum():
     )
     value_function = GaussianMLPValueFunction(env_spec=env.spec,
                                               hidden_sizes=(32, 32))
+    task_sampler = SetTaskSampler(lambda: normalize(
+        GymEnv(HalfCheetahDirEnv()), expected_action_scale=10.))
 
     episodes_per_task = 5
     max_episode_length = 100
@@ -46,6 +48,7 @@ def test_maml_trpo_pendulum():
     runner = LocalRunner(snapshot_config)
     algo = MAMLTRPO(env=env,
                     policy=policy,
+                    task_sampler=task_sampler,
                     value_function=value_function,
                     max_episode_length=max_episode_length,
                     meta_batch_size=5,
@@ -75,6 +78,8 @@ def test_maml_trpo_dummy_named_env():
     )
     value_function = GaussianMLPValueFunction(env_spec=env.spec,
                                               hidden_sizes=(32, 32))
+    task_sampler = SetTaskSampler(lambda: normalize(
+        GymEnv(HalfCheetahDirEnv()), expected_action_scale=10.))
 
     episodes_per_task = 2
     max_episode_length = 100
@@ -82,6 +87,7 @@ def test_maml_trpo_dummy_named_env():
     runner = LocalRunner(snapshot_config)
     algo = MAMLTRPO(env=env,
                     policy=policy,
+                    task_sampler=task_sampler,
                     value_function=value_function,
                     max_episode_length=max_episode_length,
                     meta_batch_size=5,

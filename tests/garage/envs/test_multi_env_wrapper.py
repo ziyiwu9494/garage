@@ -164,16 +164,19 @@ class TestMetaWorldMultiEnvWrapper:
     def setup_class(self):
         """Init Wrapper with MT10."""
         # pylint: disable=import-outside-toplevel
-        from metaworld.benchmarks import MT10
-        tasks = MT10.get_train_tasks().all_task_names
-        envs = []
-        for task in tasks:
-            envs.append(GymEnv(MT10.from_task(task)))
-        self.task_names = tasks
+        import metaworld
+        from garage.experiment import MetaWorldTaskSampler
+        mt10 = metaworld.MT10()
+        train_task_sampler = MetaWorldTaskSampler(mt10,
+                                                  'train',
+                                                  add_env_onehot=True)
+        env_ups = train_task_sampler.sample(10)
+        envs = [env_up() for env_up in env_ups]
+        self.task_names = [env_up._task.env_name for env_up in env_ups]
         self.env = MultiEnvWrapper(envs,
                                    sample_strategy=round_robin_strategy,
                                    mode='vanilla',
-                                   env_names=tasks)
+                                   env_names=self.task_names)
         self.env_no_onehot = MultiEnvWrapper(
             envs, sample_strategy=round_robin_strategy, mode='del-onehot')
 

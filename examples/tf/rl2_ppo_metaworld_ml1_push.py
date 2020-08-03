@@ -2,11 +2,12 @@
 """Example script to run RL2 in ML1."""
 # pylint: disable=no-value-for-parameter
 import click
-import metaworld.benchmarks as mwb
+import metaworld
 
 from garage import wrap_experiment
-from garage.envs import GymEnv
-from garage.experiment import LocalTFRunner, task_sampler
+from garage.experiment import (LocalTFRunner,
+                               MetaEvaluator,
+                               MetaWorldTaskSampler)
 from garage.experiment.deterministic import set_seed
 from garage.np.baselines import LinearFeatureBaseline
 from garage.sampler import LocalSampler
@@ -24,7 +25,7 @@ from garage.tf.policies import GaussianGRUPolicy
 @wrap_experiment
 def rl2_ppo_metaworld_ml1_push(ctxt, seed, max_episode_length, meta_batch_size,
                                n_epochs, episode_per_task):
-    """Train PPO with ML1 environment.
+    """Train RL2 PPO with ML1 environment.
 
     Args:
         ctxt (ExperimentContext): The experiment configuration used by
@@ -38,21 +39,29 @@ def rl2_ppo_metaworld_ml1_push(ctxt, seed, max_episode_length, meta_batch_size,
 
     """
     set_seed(seed)
-    with LocalTFRunner(snapshot_config=ctxt) as runner:
-        tasks = task_sampler.SetTaskSampler(lambda: RL2Env(
-            GymEnv(mwb.ML1.get_train_tasks('push-v1'))))
+    ml1 = metaworld.ML1('push-v1')
 
-        env_spec = RL2Env(GymEnv(mwb.ML1.get_train_tasks('push-v1'))).spec
+    task_sampler = MetaWorldTaskSampler(ml1, 'train',
+                                        lambda env, _: RL2Env(env))
+    env = task_sampler.sample(1)[0]()
+    test_task_sampler = MetaWorldTaskSampler(ml1, 'test',
+                                             lambda env, _: RL2Env(env))
+    env_spec = env.spec
+
+    with LocalTFRunner(snapshot_config=ctxt) as runner:
         policy = GaussianGRUPolicy(name='policy',
                                    hidden_dim=64,
                                    env_spec=env_spec,
                                    state_include_action=False)
 
+        meta_evaluator = MetaEvaluator(test_task_sampler=test_task_sampler,
+                                       max_episode_length=max_episode_length)
+
         baseline = LinearFeatureBaseline(env_spec=env_spec)
 
         algo = RL2PPO(rl2_max_episode_length=max_episode_length,
                       meta_batch_size=meta_batch_size,
-                      task_sampler=tasks,
+                      task_sampler=task_sampler,
                       env_spec=env_spec,
                       policy=policy,
                       baseline=baseline,
@@ -67,10 +76,11 @@ def rl2_ppo_metaworld_ml1_push(ctxt, seed, max_episode_length, meta_batch_size,
                       entropy_method='max',
                       policy_ent_coeff=0.02,
                       center_adv=False,
+                      meta_evaluator=meta_evaluator,
                       max_episode_length=max_episode_length * episode_per_task)
 
         runner.setup(algo,
-                     tasks.sample(meta_batch_size),
+                     task_sampler.sample(meta_batch_size),
                      sampler_cls=LocalSampler,
                      n_workers=meta_batch_size,
                      worker_class=RL2Worker,

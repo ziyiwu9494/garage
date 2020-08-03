@@ -332,7 +332,7 @@ def test_mtppo_metaworld_mt10():
     """Test ppo_metaworld_mt10.py."""
     assert subprocess.run([
         EXAMPLES_ROOT_DIR / 'torch/mtppo_metaworld_mt10.py', '--epochs', '1',
-        '--batch_size', '1', '--n_worker', '1'
+        '--batch_size', '1', '--n_workers', '1', '--n_tasks', '10'
     ],
                           check=False).returncode == 0
 
@@ -345,7 +345,7 @@ def test_mtppo_metaworld_mt50():
     """Test ppo_metaworld_mt50.py."""
     assert subprocess.run([
         EXAMPLES_ROOT_DIR / 'torch/mtppo_metaworld_mt50.py', '--epochs', '1',
-        '--batch_size', '1', '--n_worker', '1'
+        '--batch_size', '1', '--n_workers', '1', '--n_tasks', '50'
     ],
                           check=False).returncode == 0
 
@@ -369,7 +369,7 @@ def test_trpo_metaworld_mt10():
     """Test trpo_metaworld_mt10.py."""
     assert subprocess.run([
         EXAMPLES_ROOT_DIR / 'torch/mttrpo_metaworld_mt10.py', '--epochs', '1',
-        '--batch_size', '1', '--n_worker', '1'
+        '--batch_size', '1', '--n_workers', '1', '--n_tasks', '10'
     ],
                           check=False).returncode == 0
 
@@ -382,7 +382,7 @@ def test_trpo_metaworld_mt50():
     """Test trpo_metaworld_mt50.py."""
     assert subprocess.run([
         EXAMPLES_ROOT_DIR / 'torch/mttrpo_metaworld_mt50.py', '--epochs', '1',
-        '--batch_size', '1', '--n_worker', '1'
+        '--batch_size', '1', '--n_workers', '1', '--n_tasks', '50'
     ],
                           check=False).returncode == 0
 

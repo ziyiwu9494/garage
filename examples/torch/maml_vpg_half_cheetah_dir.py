@@ -64,6 +64,7 @@ def maml_vpg_half_cheetah_dir(ctxt, seed, epochs, episodes_per_task,
     runner = LocalRunner(ctxt)
     algo = MAMLVPG(env=env,
                    policy=policy,
+                   task_sampler=task_sampler,
                    value_function=value_function,
                    max_episode_length=max_episode_length,
                    meta_batch_size=meta_batch_size,

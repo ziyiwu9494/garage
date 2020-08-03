@@ -26,6 +26,8 @@ class TestContextConditionedPolicy:
                                 high=1,
                                 shape=(self.latent_dim, ),
                                 dtype=np.float32)
+        self.z_means = torch.Tensor([[0.]])
+        self.z_vars = torch.Tensor([[1.]])
 
         # add latent space to observation space to create a new space
         augmented_obs_space = akro.Tuple(
@@ -60,18 +62,15 @@ class TestContextConditionedPolicy:
     def test_reset_belief(self):
         """Test reset_belief."""
         expected_shape = [1, self.latent_dim]
-        self.module.reset_belief()
-        assert torch.all(
-            torch.eq(self.module.z_means, torch.zeros(expected_shape)))
-        assert torch.all(
-            torch.eq(self.module.z_vars, torch.ones(expected_shape)))
+        _, z_means, z_vars = self.module.reset_belief()
+        assert torch.all(torch.eq(z_means, torch.zeros(expected_shape)))
+        assert torch.all(torch.eq(z_vars, torch.ones(expected_shape)))
 
     def test_sample_from_belief(self):
         """Test sample_from_belief."""
-        self.module.sample_from_belief()
+        z = self.module.sample_from_belief(self.z_means, self.z_vars)
         expected_shape = [1, self.latent_dim]
-        assert all(
-            [a == b for a, b in zip(self.module.z.shape, expected_shape)])
+        assert all([a == b for a, b in zip(z.shape, expected_shape)])
 
     def test_update_context(self):
         """Test update_context."""
@@ -84,45 +83,44 @@ class TestContextConditionedPolicy:
                      agent_info={},
                      step_type=StepType.FIRST)
         updates = 10
+        context = None
         for _ in range(updates):
-            self.module.update_context(s)
+            context = self.module.update_context(s, context)
         assert torch.all(
-            torch.eq(self.module.context,
-                     torch.ones(updates, self.encoder_input_dim)))
+            torch.eq(context, torch.ones(updates, self.encoder_input_dim)))
 
     def test_infer_posterior(self):
         """Test infer_posterior."""
         context = torch.randn(1, 1, self.encoder_input_dim)
-        self.module.infer_posterior(context)
+        z, _, _ = self.module.infer_posterior(context)
         expected_shape = [1, self.latent_dim]
-        assert all(
-            [a == b for a, b in zip(self.module.z.shape, expected_shape)])
+        assert all([a == b for a, b in zip(z.shape, expected_shape)])
 
     def test_forward(self):
         """Test forward."""
         t, b = 1, 2
         obs = torch.randn((t, b, self.obs_dim), dtype=torch.float32)
         context = torch.randn(1, 1, self.encoder_input_dim)
-        policy_output, task_z_out = self.module.forward(obs, context)
+        outputs = self.module.forward(obs, context)
 
         expected_shape = [b, self.action_dim]
         assert all(
-            [a == b for a, b in zip(policy_output[0].shape, expected_shape)])
+            [a == b for a, b in zip(outputs['actions'].shape, expected_shape)])
         expected_shape = [b, self.latent_dim]
-        assert all([a == b for a, b in zip(task_z_out.shape, expected_shape)])
+        assert all(
+            [a == b for a, b in zip(outputs['task_z'].shape, expected_shape)])
 
     def test_get_action(self):
         """Test get_action."""
         obs = np.random.rand(self.obs_dim)
-        action, _ = self.module.get_action(obs)
+        action, _ = self.module.get_action(obs, self.z_means)
         assert len(action) == self.action_dim
 
     def test_compute_kl_div(self):
         """Test compute_kl_div."""
-        self.module.sample_from_belief()
         context = torch.randn(1, 1, self.encoder_input_dim)
-        self.module.infer_posterior(context)
-        kl_div = self.module.compute_kl_div()
+        _, z_means, z_vars = self.module.infer_posterior(context)
+        kl_div = self.module.compute_kl_div(z_means, z_vars)
         assert kl_div != 0
 
     def test_networks(self):

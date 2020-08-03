@@ -2,15 +2,16 @@
 """This is an example to train TRPO on MT50 environment."""
 # pylint: disable=no-value-for-parameter
 import click
-import metaworld.benchmarks as mwb
+import metaworld
 import psutil
 import torch
 
 from garage import wrap_experiment
-from garage.envs import GymEnv, MultiEnvWrapper, normalize
+from garage.envs import MultiEnvWrapper, normalize
 from garage.envs.multi_env_wrapper import round_robin_strategy
 from garage.experiment import LocalRunner
 from garage.experiment.deterministic import set_seed
+from garage.experiment.task_sampler import MetaWorldTaskSampler
 from garage.torch.algos import TRPO
 from garage.torch.policies import GaussianMLPPolicy
 from garage.torch.value_functions import GaussianMLPValueFunction
@@ -20,9 +21,10 @@ from garage.torch.value_functions import GaussianMLPValueFunction
 @click.option('--seed', default=1)
 @click.option('--epochs', default=500)
 @click.option('--batch_size', default=1024)
-@click.option('--n_worker', default=psutil.cpu_count(logical=False))
+@click.option('--n_workers', default=psutil.cpu_count(logical=False))
+@click.option('--n_tasks', default=2500)
 @wrap_experiment(snapshot_mode='all')
-def mttrpo_metaworld_mt50(ctxt, seed, epochs, batch_size, n_worker):
+def mttrpo_metaworld_mt50(ctxt, seed, epochs, batch_size, n_workers, n_tasks):
     """Set up environment and algorithm and run the task.
 
     Args:
@@ -32,14 +34,19 @@ def mttrpo_metaworld_mt50(ctxt, seed, epochs, batch_size, n_worker):
             determinism.
         epochs (int): Number of training epochs.
         batch_size (int): Number of environment steps in one batch.
-        n_worker (int): The number of workers the sampler should use.
+        n_workers (int): The number of workers the sampler should use.
+        n_tasks (int): Number of tasks to use. Should be a multiple of 50.
 
     """
     set_seed(seed)
-    tasks = mwb.MT50.get_train_tasks().all_task_names
-    envs = []
-    for task in tasks:
-        envs.append(normalize(GymEnv(mwb.MT50.from_task(task))))
+    mt10 = metaworld.MT10()
+    train_task_sampler = MetaWorldTaskSampler(mt10,
+                                              'train',
+                                              lambda env, _: normalize(env),
+                                              add_env_onehot=True)
+    assert n_tasks % 10 == 0
+    assert n_tasks <= 500
+    envs = [env_up() for env_up in train_task_sampler.sample(n_tasks)]
     env = MultiEnvWrapper(envs,
                           sample_strategy=round_robin_strategy,
                           mode='vanilla')
@@ -64,7 +71,7 @@ def mttrpo_metaworld_mt50(ctxt, seed, epochs, batch_size, n_worker):
                 gae_lambda=0.95)
 
     runner = LocalRunner(ctxt)
-    runner.setup(algo, env, n_workers=n_worker)
+    runner.setup(algo, env, n_workers=n_workers)
     runner.train(n_epochs=epochs, batch_size=batch_size)
 
 

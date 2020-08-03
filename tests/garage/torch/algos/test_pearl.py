@@ -1,12 +1,12 @@
 """This script is a test that fails when PEARL performance is too low."""
 import pickle
 
+import metaworld
 import pytest
 
-from garage.envs import GymEnv, normalize, PointEnv
 from garage.experiment import LocalRunner
 from garage.experiment.deterministic import set_seed
-from garage.experiment.task_sampler import SetTaskSampler
+from garage.experiment.task_sampler import MetaWorldTaskSampler
 from garage.sampler import LocalSampler
 from garage.torch import set_gpu_mode
 from garage.torch.algos import PEARL
@@ -29,7 +29,6 @@ except Exception:  # pylint: disable=broad-except
         'Skipping tests, failed to import mujoco. Do you have a '
         'valid mujoco key installed?',
         allow_module_level=True)
-from metaworld.benchmarks import ML1  # isort:skip
 
 
 @pytest.mark.mujoco
@@ -49,7 +48,6 @@ class TestPEARL:
                       meta_batch_size=16,
                       num_steps_per_epoch=40,
                       num_initial_steps=40,
-                      num_tasks_sample=15,
                       num_steps_prior=15,
                       num_extra_rl_steps_posterior=15,
                       batch_size=256,
@@ -63,12 +61,11 @@ class TestPEARL:
 
         net_size = params['net_size']
         set_seed(params['seed'])
-        env_sampler = SetTaskSampler(lambda: normalize(
-            GymEnv(ML1.get_train_tasks('push-v1'))))
-        env = env_sampler.sample(params['num_train_tasks'])
-
-        test_env_sampler = SetTaskSampler(lambda: normalize(
-            GymEnv(ML1.get_test_tasks('push-v1'))))
+        ml1 = metaworld.ML1('push-v1')
+        task_sampler = MetaWorldTaskSampler(ml1, 'train')
+        env = task_sampler.sample(1)[0]()
+        test_task_sampler = MetaWorldTaskSampler(ml1, 'test')
+        env_spec = env.spec
 
         augmented_env = PEARL.augment_env_spec(env[0](), params['latent_size'])
         qf = ContinuousMLPQFunction(
@@ -84,7 +81,8 @@ class TestPEARL:
             hidden_sizes=[net_size, net_size, net_size])
 
         pearl = PEARL(
-            env=env,
+            env_spec=env_spec,
+            task_sampler=task_sampler,
             policy_class=ContextConditionedPolicy,
             encoder_class=MLPEncoder,
             inner_policy=inner_policy,
@@ -94,11 +92,10 @@ class TestPEARL:
             num_test_tasks=params['num_test_tasks'],
             latent_dim=params['latent_size'],
             encoder_hidden_sizes=params['encoder_hidden_sizes'],
-            test_env_sampler=test_env_sampler,
+            test_task_sampler=test_task_sampler,
             meta_batch_size=params['meta_batch_size'],
             num_steps_per_epoch=params['num_steps_per_epoch'],
             num_initial_steps=params['num_initial_steps'],
-            num_tasks_sample=params['num_tasks_sample'],
             num_steps_prior=params['num_steps_prior'],
             num_extra_rl_steps_posterior=params[
                 'num_extra_rl_steps_posterior'],
@@ -128,10 +125,11 @@ class TestPEARL:
     def test_pickling(self):
         """Test pickle and unpickle."""
         net_size = 10
-        env_sampler = SetTaskSampler(PointEnv)
-        env = env_sampler.sample(5)
-
-        test_env_sampler = SetTaskSampler(PointEnv)
+        ml1 = metaworld.ML1('push-v1')
+        task_sampler = MetaWorldTaskSampler(ml1, 'train')
+        env = task_sampler.sample(1)[0]()
+        test_task_sampler = MetaWorldTaskSampler(ml1, 'test')
+        env_spec = env.spec
 
         augmented_env = PEARL.augment_env_spec(env[0](), 5)
         qf = ContinuousMLPQFunction(
@@ -146,7 +144,8 @@ class TestPEARL:
             env_spec=augmented_env,
             hidden_sizes=[net_size, net_size, net_size])
 
-        pearl = PEARL(env=env,
+        pearl = PEARL(env_spec=env_spec,
+                      task_sampler=task_sampler,
                       inner_policy=inner_policy,
                       qf=qf,
                       vf=vf,
@@ -154,7 +153,7 @@ class TestPEARL:
                       num_test_tasks=5,
                       latent_dim=5,
                       encoder_hidden_sizes=[10, 10],
-                      test_env_sampler=test_env_sampler)
+                      test_task_sampler=test_task_sampler)
 
         # This line is just to improve coverage
         pearl.to()

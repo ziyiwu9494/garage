@@ -2,11 +2,12 @@
 """Example script to run RL2 in ML10."""
 # pylint: disable=no-value-for-parameter
 import click
-import metaworld.benchmarks as mwb
+import metaworld
 
 from garage import wrap_experiment
-from garage.envs import GymEnv
-from garage.experiment import LocalTFRunner, task_sampler
+from garage.experiment import (LocalTFRunner,
+                               MetaEvaluator,
+                               MetaWorldTaskSampler)
 from garage.experiment.deterministic import set_seed
 from garage.np.baselines import LinearFeatureBaseline
 from garage.sampler import LocalSampler
@@ -24,14 +25,14 @@ from garage.tf.policies import GaussianGRUPolicy
 @wrap_experiment
 def rl2_ppo_metaworld_ml10(ctxt, seed, max_episode_length, meta_batch_size,
                            n_epochs, episode_per_task):
-    """Train PPO with ML10 environment.
+    """Train RL2 PPO with ML10 environment.
 
     Args:
-        ctxt (ExperimentContext): The experiment configuration used by
-            :class:`~LocalRunner` to create the :class:`~Snapshotter`.
+        ctxt (garage.experiment.ExperimentContext): The experiment
+            configuration used by LocalRunner to create the snapshotter.
         seed (int): Used to seed the random number generator to produce
             determinism.
-        max_episode_length (int): Maximum length of a single episode.
+        max_episode_length (int): Maximum length of a single rollout.
         meta_batch_size (int): Meta batch size.
         n_epochs (int): Total number of epochs for training.
         episode_per_task (int): Number of training episode per task.
@@ -39,14 +40,17 @@ def rl2_ppo_metaworld_ml10(ctxt, seed, max_episode_length, meta_batch_size,
     """
     set_seed(seed)
     with LocalTFRunner(snapshot_config=ctxt) as runner:
-        ml10_train_envs = [
-            RL2Env(GymEnv(mwb.ML10.from_task(task_name)))
-            for task_name in mwb.ML10.get_train_tasks().all_task_names
-        ]
-        tasks = task_sampler.EnvPoolSampler(ml10_train_envs)
-        tasks.grow_pool(meta_batch_size)
+        ml10 = metaworld.ML10()
+        tasks = MetaWorldTaskSampler(ml10, 'train', lambda env, _: RL2Env(env))
+        test_task_sampler = MetaWorldTaskSampler(ml10, 'test',
+                                                 lambda env, _: RL2Env(env))
+        meta_evaluator = MetaEvaluator(test_task_sampler=test_task_sampler,
+                                       max_episode_length=max_episode_length)
 
-        env_spec = ml10_train_envs[0].spec
+        env_updates = tasks.sample(10)
+        env = env_updates[0]()
+
+        env_spec = env.spec
         policy = GaussianGRUPolicy(name='policy',
                                    hidden_dim=64,
                                    env_spec=env_spec,
@@ -65,12 +69,13 @@ def rl2_ppo_metaworld_ml10(ctxt, seed, max_episode_length, meta_batch_size,
                       lr_clip_range=0.2,
                       optimizer_args=dict(
                           batch_size=32,
-                          max_episode_length=10,
+                          max_epochs=10,
                       ),
                       stop_entropy_gradient=True,
                       entropy_method='max',
                       policy_ent_coeff=0.02,
                       center_adv=False,
+                      meta_evaluator=meta_evaluator,
                       max_episode_length=max_episode_length * episode_per_task)
 
         runner.setup(algo,
@@ -78,7 +83,7 @@ def rl2_ppo_metaworld_ml10(ctxt, seed, max_episode_length, meta_batch_size,
                      sampler_cls=LocalSampler,
                      n_workers=meta_batch_size,
                      worker_class=RL2Worker,
-                     worker_args=dict(n_episodes_per_trial=episode_per_task))
+                     worker_args=dict(n_paths_per_trial=episode_per_task))
 
         runner.train(n_epochs=n_epochs,
                      batch_size=episode_per_task * max_episode_length *

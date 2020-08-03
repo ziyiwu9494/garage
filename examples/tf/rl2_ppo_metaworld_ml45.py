@@ -2,11 +2,12 @@
 """Example script to run RL2 in ML45."""
 # pylint: disable=no-value-for-parameter
 import click
-import metaworld.benchmarks as mwb
+import metaworld
 
 from garage import wrap_experiment
-from garage.envs import GymEnv
-from garage.experiment import LocalTFRunner, task_sampler
+from garage.experiment import (LocalTFRunner,
+                               MetaEvaluator,
+                               MetaWorldTaskSampler)
 from garage.experiment.deterministic import set_seed
 from garage.np.baselines import LinearFeatureBaseline
 from garage.sampler import LocalSampler
@@ -38,16 +39,13 @@ def rl2_ppo_metaworld_ml45(ctxt, seed, max_episode_length, meta_batch_size,
 
     """
     set_seed(seed)
+    ml45 = metaworld.ML45()
+    tasks = MetaWorldTaskSampler(ml45, 'train', lambda env, _: RL2Env(env))
+    test_tasks = MetaWorldTaskSampler(ml45, 'test', lambda env, _: RL2Env(env))
     with LocalTFRunner(snapshot_config=ctxt) as runner:
-        ml45_train_tasks = mwb.ML45.get_train_tasks()
-        ml45_train_envs = [
-            RL2Env(GymEnv(mwb.ML45.from_task(task_name)))
-            for task_name in ml45_train_tasks.all_task_names
-        ]
-        tasks = task_sampler.EnvPoolSampler(ml45_train_envs)
-        tasks.grow_pool(meta_batch_size)
 
-        env_spec = ml45_train_envs[0].spec
+        env = tasks.sample(1)[0]()
+        env_spec = env.spec
 
         policy = GaussianGRUPolicy(name='policy',
                                    hidden_dim=64,
@@ -55,6 +53,12 @@ def rl2_ppo_metaworld_ml45(ctxt, seed, max_episode_length, meta_batch_size,
                                    state_include_action=False)
 
         baseline = LinearFeatureBaseline(env_spec=env_spec)
+
+        meta_evaluator = MetaEvaluator(test_task_sampler=test_tasks,
+                                       n_exploration_eps=10,
+                                       n_test_episodes=10,
+                                       max_episode_length=max_episode_length,
+                                       n_test_tasks=5)
 
         algo = RL2PPO(rl2_max_episode_length=max_episode_length,
                       meta_batch_size=meta_batch_size,
@@ -73,6 +77,7 @@ def rl2_ppo_metaworld_ml45(ctxt, seed, max_episode_length, meta_batch_size,
                       entropy_method='max',
                       policy_ent_coeff=0.02,
                       center_adv=False,
+                      meta_evaluator=meta_evaluator,
                       max_episode_length=max_episode_length * episode_per_task)
 
         runner.setup(algo,

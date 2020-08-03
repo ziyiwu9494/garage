@@ -129,8 +129,9 @@ class SAC(RLAlgorithm):
         self._discount = discount
         self._reward_scale = reward_scale
         self.max_episode_length = max_episode_length
-        self._max_episode_length_eval = (max_episode_length_eval
-                                         or max_episode_length)
+        self._max_episode_length_eval = max_episode_length_eval
+        if self._max_episode_length_eval is None:
+            self._max_episode_length_eval = max_episode_length
 
         self.policy = policy
         self.env_spec = env_spec
@@ -464,6 +465,7 @@ class SAC(RLAlgorithm):
         eval_episodes = obtain_evaluation_episodes(
             self.policy,
             self._eval_env,
+            max_episode_length=self._max_episode_length_eval,
             num_eps=self._num_evaluation_episodes,
             deterministic=False)
         last_return = log_performance(epoch,

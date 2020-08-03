@@ -2,14 +2,12 @@
 """This is an example to train MAML-TRPO on ML10 environment."""
 # pylint: disable=no-value-for-parameter
 import click
-import metaworld.benchmarks as mwb
+import metaworld
 import torch
 
 from garage import wrap_experiment
-from garage.envs import GymEnv, normalize
-from garage.experiment import LocalRunner, MetaEvaluator
+from garage.experiment import LocalRunner, MetaEvaluator, MetaWorldTaskSampler
 from garage.experiment.deterministic import set_seed
-from garage.experiment.task_sampler import EnvPoolSampler
 from garage.torch.algos import MAMLTRPO
 from garage.torch.policies import GaussianMLPPolicy
 from garage.torch.value_functions import GaussianMLPValueFunction
@@ -37,8 +35,10 @@ def maml_trpo_metaworld_ml10(ctxt, seed, epochs, episodes_per_task,
 
     """
     set_seed(seed)
-    env = normalize(GymEnv(mwb.ML10.get_train_tasks()),
-                    expected_action_scale=10.)
+    ml10 = metaworld.ML10()
+    tasks = MetaWorldTaskSampler(ml10, 'train')
+    env = tasks.sample(1)[0]()
+    test_sampler = MetaWorldTaskSampler(ml10, 'test')
 
     policy = GaussianMLPPolicy(
         env_spec=env.spec,
@@ -54,20 +54,13 @@ def maml_trpo_metaworld_ml10(ctxt, seed, epochs, episodes_per_task,
 
     max_episode_length = 100
 
-    test_task_names = mwb.ML10.get_test_tasks().all_task_names
-    test_tasks = [
-        normalize(GymEnv(mwb.ML10.from_task(task)), expected_action_scale=10.)
-        for task in test_task_names
-    ]
-    test_sampler = EnvPoolSampler(test_tasks)
-
     meta_evaluator = MetaEvaluator(test_task_sampler=test_sampler,
-                                   max_episode_length=max_episode_length,
-                                   n_test_tasks=len(test_task_names))
+                                   max_episode_length=max_episode_length)
 
     runner = LocalRunner(ctxt)
     algo = MAMLTRPO(env=env,
                     policy=policy,
+                    task_sampler=tasks,
                     value_function=value_function,
                     max_episode_length=max_episode_length,
                     meta_batch_size=meta_batch_size,
