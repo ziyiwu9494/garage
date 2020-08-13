@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """An example to train TD3 algorithm on InvertedDoublePendulum PyTorch."""
 import gym
+import numpy as np
 import torch
 from torch.nn import functional as F
 
@@ -64,7 +65,7 @@ def td3_pendulum(ctxt=None, seed=1):
               policy_noise=0.2,
               policy_lr=1e-3,
               qf_lr=1e-3,
-              max_episode_length=100,
+              max_episode_length=200,
               steps_per_epoch=20,
               grad_steps_per_env_step=1,
               min_buffer_size=int(1e4),
@@ -73,5 +74,5 @@ def td3_pendulum(ctxt=None, seed=1):
     runner.setup(algo=td3, env=env)
     runner.train(n_epochs=1000, batch_size=100)
 
-
-td3_pendulum()
+s = np.random.randint(0, 1000)
+td3_pendulum(seed=s)

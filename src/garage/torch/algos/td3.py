@@ -34,6 +34,7 @@ class TD3(RLAlgorithm):
         max_action (float): Maximum action magnitude.
         max_episode_length (int): Maximum path length. The episode will
             terminate when length of trajectory reaches max_episode_length.
+        grad_steps_per_env_step (int): Number of gradient steps taken per environment step sampled.
         buffer_batch_size (int): Size of replay buffer.
         min_buffer_size (int): The minimum buffer size for replay buffer.
         policy_noise (float): Policy (actor) noise.
@@ -54,7 +55,6 @@ class TD3(RLAlgorithm):
             e.g. `(torch.optim.Adam, {'lr' : 1e-3})`.
         steps_per_epoch (int): Number of gradient steps per
             evaluation epoch.
-        grad_steps_per_env_step (int): Number of gradient steps taken per environment step sampled.
 
     """
 
@@ -64,7 +64,9 @@ class TD3(RLAlgorithm):
                  qf1,
                  qf2,
                  replay_buffer,
+                 *,  # Everything after this is numbers.
                  max_episode_length,
+                 max_eval_path_length=None,
                  target_update_tau=0.005,
                  discount=0.99,
                  reward_scaling=1.,
@@ -98,6 +100,7 @@ class TD3(RLAlgorithm):
         self._update_actor_interval = update_actor_interval
         self._steps_per_epoch = steps_per_epoch
         self.max_episode_length = max_episode_length
+        self._max_eval_path_length = max_eval_path_length
 
         self._episode_policy_losses = []
         self._episode_qf_losses = []
@@ -107,14 +110,16 @@ class TD3(RLAlgorithm):
         self.exploration_policy = exploration_policy
         self.sampler_cls = LocalSampler
         self.worker_cls = FragmentWorker
-
         self._replay_buffer = replay_buffer
+
         self.policy = policy
         self._qf_1 = qf1
         self._qf_2 = qf2
         self._target_policy = copy.deepcopy(self.policy)
         self._target_qf_1 = copy.deepcopy(self._qf_1)
         self._target_qf_2 = copy.deepcopy(self._qf_2)
+        self._networks = [self.policy, self._qf_1, self._qf_2, self._target_policy, 
+                    self._target_qf_1, self._target_qf_2] 
 
         self._policy_optimizer = make_optimizer(policy_optimizer,
                                                 module=self.policy,
@@ -126,7 +131,6 @@ class TD3(RLAlgorithm):
                                               module=self._qf_2,
                                               lr=qf_lr)
         self._actor_loss = torch.zeros(1)
-                                              
 
     # def __getstate__(self):
     #     """Object.__getstate__.
@@ -166,17 +170,31 @@ class TD3(RLAlgorithm):
             for cycle in range(self._steps_per_epoch):
                 runner.step_path = runner.obtain_trajectories(runner.step_itr)
                 self._replay_buffer.add_trajectory_batch(runner.step_path)
-                self._train_once(runner.step_itr, runner.step_path)
+                
+                for _ in range(self._grad_steps_per_env_step):
+                    self._train_once(runner.step_itr, runner.step_path)
+                
+                if runner.step_itr % self._steps_per_epoch == 0:
+                    logger.log('Training finished')
+                if (self._replay_buffer.n_transitions_stored >=
+                    self._min_buffer_size):
+                    self._log_statistics()
                 if (cycle == 0 and self._replay_buffer.n_transitions_stored >=
                         self._min_buffer_size):
                     runner.enable_logging = True
                     eval_eps = obtain_evaluation_samples(
                         self.policy, self._eval_env)
+                    train_returns = log_performance(runner.step_itr,
+                                                   runner.step_path,
+                                                   discount=self._discount,
+                                                   prefix='Training')
                     last_returns = log_performance(runner.step_itr,
                                                    eval_eps,
-                                                   discount=self._discount)
-                runner.step_itr += 1
+                                                   discount=self._discount,
+                                                   prefix='Evaluation')
 
+                runner.step_itr += 1
+        
         return np.mean(last_returns)
 
     def _train_once(self, itr, time_steps):
@@ -188,41 +206,40 @@ class TD3(RLAlgorithm):
 
         """
         # self._replay_buffer.add_trajectory_batch(time_steps)
+        # epoch = itr / self._steps_per_epoch
 
-        epoch = itr / self._steps_per_epoch
+        # for _ in range(self._grad_steps_per_env_step):
+        if (self._replay_buffer.n_transitions_stored >=
+                self._min_buffer_size):
+            samples = self._replay_buffer.sample_transitions(
+                self._buffer_batch_size)
+            samples['rewards'] *= self._reward_scaling
+            qf_loss, y, q, policy_loss = torch_to_np(
+                self._optimize_policy(samples, itr))
+            self._episode_policy_losses.append(policy_loss)
+            self._episode_qf_losses.append(qf_loss)
+            self._epoch_ys.append(y)
+            self._epoch_qs.append(q)
 
-        for _ in range(self._grad_steps_per_env_step):
-            if (self._replay_buffer.n_transitions_stored >=
-                    self._min_buffer_size):
-                samples = self._replay_buffer.sample_transitions(
-                    self._buffer_batch_size)
-                samples['rewards'] *= self._reward_scaling
-                qf_loss, y, q, policy_loss = torch_to_np(
-                    self._optimize_policy(samples, itr))
+        # if itr % self._steps_per_epoch == 0:
+        #     logger.log('Training finished')
 
-                self._episode_policy_losses.append(policy_loss)
-                self._episode_qf_losses.append(qf_loss)
-                self._epoch_ys.append(y)
-                self._epoch_qs.append(q)
-
-        if itr % self._steps_per_epoch == 0:
-            logger.log('Training finished')
-
-            if (self._replay_buffer.n_transitions_stored >=
-                    self._min_buffer_size):
-                tabular.record('Epoch', epoch)
-                tabular.record('Policy/AveragePolicyLoss',
-                               np.mean(self._episode_policy_losses))
-                tabular.record('QFunction/AverageQFunctionLoss',
-                               np.mean(self._episode_qf_losses))
-                tabular.record('QFunction/AverageQ', np.mean(self._epoch_qs))
-                tabular.record('QFunction/MaxQ', np.max(self._epoch_qs))
-                tabular.record('QFunction/AverageAbsQ',
-                               np.mean(np.abs(self._epoch_qs)))
-                tabular.record('QFunction/AverageY', np.mean(self._epoch_ys))
-                tabular.record('QFunction/MaxY', np.max(self._epoch_ys))
-                tabular.record('QFunction/AverageAbsY',
-                               np.mean(np.abs(self._epoch_ys)))
+        #     if (self._replay_buffer.n_transitions_stored >=
+        #             self._min_buffer_size):
+        #         self._log_statistics(epoch)
+                # tabular.record('Epoch', epoch)
+                # tabular.record('Policy/AveragePolicyLoss',
+                #                np.mean(self._episode_policy_losses))
+                # tabular.record('QFunction/AverageQFunctionLoss',
+                #                np.mean(self._episode_qf_losses))
+                # tabular.record('QFunction/AverageQ', np.mean(self._epoch_qs))
+                # tabular.record('QFunction/MaxQ', np.max(self._epoch_qs))
+                # tabular.record('QFunction/AverageAbsQ',
+                #                np.mean(np.abs(self._epoch_qs)))
+                # tabular.record('QFunction/AverageY', np.mean(self._epoch_ys))
+                # tabular.record('QFunction/MaxY', np.max(self._epoch_ys))
+                # tabular.record('QFunction/AverageAbsY',
+                #                np.mean(np.abs(self._epoch_ys)))
 
     def _optimize_policy(self, samples_data, itr):
         """Perform algorithm optimization.
@@ -295,7 +312,8 @@ class TD3(RLAlgorithm):
             # update target networks
             self._update_network_parameters()
 
-        return (critic_loss.detach(), target_Q, current_Q.detach(), self._actor_loss.detach())
+        return (critic_loss.detach(), target_Q, current_Q.detach(),
+                self._actor_loss.detach())
 
     def _update_network_parameters(self):
         """Update parameters in actor network and critic networks."""
@@ -313,3 +331,35 @@ class TD3(RLAlgorithm):
                                        self.policy.parameters()):
             target_param.data.copy_(target_param.data * (1.0 - self._tau) +
                                     param.data * self._tau)
+
+    def _log_statistics(self):
+        # tabular.record('Epoch', epoch)
+        tabular.record('Policy/AveragePolicyLoss',
+                    np.mean(self._episode_policy_losses))
+        tabular.record('QFunction/AverageQFunctionLoss',
+                    np.mean(self._episode_qf_losses))
+        tabular.record('QFunction/AverageQ', np.mean(self._epoch_qs))
+        tabular.record('QFunction/MaxQ', np.max(self._epoch_qs))
+        tabular.record('QFunction/AverageAbsQ',
+                    np.mean(np.abs(self._epoch_qs)))
+        tabular.record('QFunction/AverageY', np.mean(self._epoch_ys))
+        tabular.record('QFunction/MaxY', np.max(self._epoch_ys))
+        tabular.record('QFunction/AverageAbsY',
+                    np.mean(np.abs(self._epoch_ys)))
+
+    def to(self, device=None):
+        """Put all the networks within the model on device.
+
+        Args:
+            device (str): ID of GPU or CPU.
+
+        """
+        if torch.cuda.is_available():
+            set_gpu_mode(True)
+        else:
+            set_gpu_mode(False)
+
+        if device is None:
+            device = global_device()
+        for net in self._networks:
+            net.to(device)

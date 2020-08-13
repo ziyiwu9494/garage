@@ -47,6 +47,7 @@ and how to implement new MDPs and new algorithms.
    :caption: Algorithms and Methods
 
    user/algo_bc
+   user/algo_td3
 
 .. toctree::
    :maxdepth: 2
