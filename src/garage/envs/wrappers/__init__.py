@@ -18,6 +18,7 @@ from garage.envs.wrappers.noop import Noop
 from garage.envs.wrappers.pixel_observation import PixelObservationWrapper
 from garage.envs.wrappers.resize import Resize
 from garage.envs.wrappers.stack_frames import StackFrames
+from garage.envs.wrappers.video_recorder import 
 
 __all__ = [
     'AtariEnv', 'ClipReward', 'EpisodicLife', 'FireReset', 'Grayscale',
