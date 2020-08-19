@@ -32,7 +32,6 @@ class MTSAC(SAC):
         env_spec (EnvSpec): The env_spec attribute of the environment that the
             agent is being trained in.
         num_tasks (int): The number of tasks being learned.
-        max_episode_length (int): The max episode length of the algorithm.
         eval_env (Environment): The environment used for collecting evaluation
             episodes.
         gradient_steps_per_itr (int): Number of optimization steps that should
@@ -76,7 +75,6 @@ class MTSAC(SAC):
         replay_buffer,
         env_spec,
         num_tasks,
-        max_episode_length,
         eval_env,
         gradient_steps_per_itr,
         fixed_alpha=None,
@@ -99,7 +97,6 @@ class MTSAC(SAC):
                          qf2=qf2,
                          replay_buffer=replay_buffer,
                          env_spec=env_spec,
-                         max_episode_length=max_episode_length,
                          gradient_steps_per_itr=gradient_steps_per_itr,
                          fixed_alpha=fixed_alpha,
                          target_entropy=target_entropy,
