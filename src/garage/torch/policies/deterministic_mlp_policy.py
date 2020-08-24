@@ -5,6 +5,7 @@ It accepts an observation of the environment and predicts an action.
 """
 import torch
 
+from garage.torch import global_device
 from garage.torch.modules import MLPModule
 from garage.torch.policies.policy import Policy
 
@@ -60,8 +61,8 @@ class DeterministicMLPPolicy(Policy):
                         distribution
         """
         with torch.no_grad():
-            x = self(torch.Tensor(observation).unsqueeze(0))
-            return x.squeeze(0).numpy(), dict()
+            x = self(torch.Tensor(observation).unsqueeze(0).to(global_device()))
+            return x.cpu().squeeze(0).numpy(), dict()
 
     def get_actions(self, observations):
         """Get actions given observations.

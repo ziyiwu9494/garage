@@ -79,7 +79,7 @@ def td3_half_cheetah(ctxt=None, seed=1):
     #     set_gpu_mode(False)
     # td3.to()
     runner.setup(algo=td3, env=env)
-    runner.train(n_epochs=50, batch_size=100)
+    runner.train(n_epochs=750, batch_size=100)
 
 
 td3_half_cheetah(seed=0)
