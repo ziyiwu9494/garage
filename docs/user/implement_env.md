@@ -1,25 +1,25 @@
 # Adding a New Environment
 
-Garage uses the [`Environment`](https://github.com/rlworkgroup/garage/blob/master/src/garage/_environment.py)
-API for all RL environments.
+Garage uses the :class:`Environment` API for all RL environments.
 
-The public API methods of :`Environment` are:
+The public API methods of :class:`Environment` are:
 
-* `reset()`: Resets the environment. Return the first observation, and the episode-level information.
-* `step()`: Steps the environment with an action and returns an EnvStep.
+| Functions                      | Description                          |
+| ------------------------------ | ------------------------------------ |
+| :meth:`~Environment.reset`     | Resets the environment. Return the first observation, and the episode-level information. |
+| :meth:`~Environment.step`      | Steps the environment with an action and returns an :class:`EnvSpec`. An `EnvStep` is a named tuple of `env_spec`, `observation`, `action`, `reward`, `step_type` representing a single step in the environment. |
+| :meth:`~Environment.render`    | Returns value for rendering, could be a terminal text, an image, etc. |
+| :meth:`~Environment.visualize` | Creates a visualization of the  environment. |
+| :meth:`~Environment.close`     | Closes the environment.              |
 
-    An `EnvStep` is a named tuple of `env_spec`, `observation`, `action`, `reward`,
-    `step_type` representing a single step in the environment.
-* `render()`: Returns value for rendering, could be a terminal text, an image, etc.
-* `visualize()`: Creates a visualization of the environment.
-* `close()`: Closes the environment.
+The attributes of :class:`Environment` are:
 
-The attributes of `Environment` are:
-
-* `action_space`: The action space specification.
-* `observation_space`: The observation space specification.
-* `spec`: The environment specifications.
-* `render_modes`: The list of supported render modes.
+| Properties                              | Description                 |
+| --------------------------------------- | --------------------------- |
+| :meth:`~Environment.action_space`       | The action space specification.      |
+| :meth:`~Environment.observation_space`  | The observation space specification. |
+| :meth:`~Environment.spec`               | The environment specifications.      |
+| :meth:`~Environment.render_modes`       | The list of supported render modes.  |
 
 You should expect to use all environments in garage with this API.
 
@@ -27,22 +27,26 @@ You should expect to use all environments in garage with this API.
 
 Luckily, Garage already came with a variety of external environment wrappers:
 
-* `garage.envs.GymEnv`, which supports the `gym` API.
-* `garage.envs.dm_control.DmControlEnv`, which supports Deepmind's
+* :class:`GymEnv`, which supports the `gym` API.
+* :class:`DmControlEnv`, which supports Deepmind's
 `dm_control` API.
-* `garage.envs.bullet.BulletEnv`, which supports the `pybullet` API.
+* :class:`BulletEnv`, which supports the `pybullet` API.
 
     Note that `pybullet` environments are `gym`-based environments, and they
-    can be wrapped with `garage.envs.GymEnv` as well. In such case,
-    `garage.envs.GymEnv` will detect the bullet-based environment and returns
-    a `garage.envs.bullet.BulletEnv`.
+    can be wrapped with :class:`GymEnv` as well. In such case,
+    :class:`GymEnv` will detect the bullet-based environment and returns
+    a :class:`BulletEnv`.
 
 If you would like to add an existing environment to garage, you will probably
 need an environment wrapper to handle environment-specific logic.
 
 Here is an handy To-do list for adding a new environment wrapper:
 
-* **Inherit** the environment wrapper from `Environment`.
+* (Recommended) **Inherit** the environment wrapper from :class:`Environment`.
+
+    Note that this is not required in Python because of duck typing. Your
+    custom environment class will work as long as it implements
+    interface methods of :class:`Environment`.
 
 * **Implement** attributes: `observation_space`, `action_space`, `spec`,
 and `render_modes`
@@ -70,7 +74,7 @@ and `render_modes`
 
 In the rest of this section, we will walk through an example of implementing a
 point robot environment using our framework. A more complete version of this
-environment is available as `garage.envs.PointEnv`.
+environment is available as :class:`PointEnv`.
 
 We will implement a simple environment with 2D observations and 2D actions. The
 goal is to control a point robot in 2D to move it to the origin. We receive
