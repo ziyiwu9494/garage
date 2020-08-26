@@ -179,7 +179,7 @@ def test_to():
 def test_fixed_alpha():
     """Test if using fixed_alpha ensures that alpha is non differentiable."""
     env_names = ['InvertedDoublePendulum-v2', 'InvertedDoublePendulum-v2']
-    task_envs = [GymEnv(name) for name in env_names]
+    task_envs = [GymEnv(name, max_episode_length=100) for name in env_names]
     env = MultiEnvWrapper(task_envs, sample_strategy=round_robin_strategy)
     test_envs = MultiEnvWrapper(task_envs,
                                 sample_strategy=round_robin_strategy)
