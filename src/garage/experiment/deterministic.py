@@ -7,7 +7,7 @@ import numpy as np
 
 seed_ = None
 seed_stream_ = None
-
+pass
 
 def set_seed(seed):
     """Set the process-wide random seed.
