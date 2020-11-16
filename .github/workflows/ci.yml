@@ -73,7 +73,7 @@ jobs:
       - name: Docker info
         run: docker version
       - uses: actions/checkout@v2
-        if: ${{ !env.IS_PR_FROM_FORK }}
+        if: !env.IS_PR_FROM_FORK
         with:
           fetch-depth: 0
       - uses: actions/checkout@v2
