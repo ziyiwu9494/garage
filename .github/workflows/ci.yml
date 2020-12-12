@@ -12,8 +12,6 @@ env:
   IS_PR_FROM_FORK: ${{ github.event.client_payload.pull_request.head.repo.fork }}
 
 on:
-  schedule:
-    - cron: '0 9 * * *'
   push:
     branches:
       - master
@@ -24,6 +22,7 @@ on:
   pull_request:
     branches:
       - master
+      - 'release-.*'
   repository_dispatch:
     types: [ ok-to-test-command ]
 
@@ -356,104 +355,6 @@ jobs:
         name: Large MuJoCo-Based Tests
         sha: ${{ github.event.client_payload.pull_request.head.sha }}
         conclusion: ${{ job.status }}
-
-
-  nightly_test:
-    name: Nightly Tests
-    runs-on: ubuntu-latest
-    needs: build_docker_container
-    if: github.event_name == 'schedule'
-
-    steps:
-      - name: Login to GitHub Package Registry
-        run: echo ${{ secrets.CI_REGISTRY_TOKEN }} | docker login docker.pkg.github.com -u ${CI_USER} --password-stdin
-      - name: Pull from cache (GitHub Package Registry)
-        run: docker pull "docker.pkg.github.com/${OWNER}/${DOCKER_CACHE_REPO}/${DOCKER_TAG}"
-      - name: Tag docker image
-        run: docker tag docker.pkg.github.com/${OWNER}/${DOCKER_CACHE_REPO}/${DOCKER_TAG} ${DOCKER_TAG}
-      - name: Nightly tests
-        run: |
-          docker run \
-            -e MJKEY \
-            --memory 6500m \
-            --memory-swap 6500m \
-            "${DOCKER_TAG}" pytest -v --reruns 1 -m nightly
-
-
-  verify_envs_conda:
-    name: Verify Conda Environment Installation
-    runs-on: ubuntu-latest
-    needs: build_docker_container
-    if: github.event_name == 'schedule'
-
-    steps:
-      - name: Login to GitHub Package Registry
-        run: echo ${{ secrets.CI_REGISTRY_TOKEN }} | docker login docker.pkg.github.com -u ${CI_USER} --password-stdin
-      - name: Pull from cache (GitHub Package Registry)
-        run: docker pull "docker.pkg.github.com/${OWNER}/${DOCKER_CACHE_REPO}/${DOCKER_TAG}"
-      - name: Tag docker image
-        run: docker tag docker.pkg.github.com/${OWNER}/${DOCKER_CACHE_REPO}/${DOCKER_TAG} ${DOCKER_TAG}
-      - name: Verify Conda
-        run: |
-          docker run \
-          -e MJKEY \
-          --memory 6500m \
-          --memory-swap 6500m \
-          "${DOCKER_TAG}" \
-          /bin/bash -c \
-          'CONDA_ROOT=$HOME/miniconda \
-          CONDA=${CONDA_ROOT}/bin/conda \
-          GARAGE_BIN=${CONDA_ROOT}/envs/garage-ci/bin; \
-          touch ${MJKEY_PATH} && \
-          wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh && \
-          bash miniconda.sh -b -p ${CONDA_ROOT} && \
-          hash -r && \
-          ${CONDA} config --set always_yes yes --set changeps1 no && \
-          ${CONDA} install -c anaconda setuptools && \
-          ${CONDA} update -q conda && \
-          ${CONDA} init && \
-          ${CONDA} info -a && \
-          ${CONDA} create -n garage-ci python=3.6 pip -y && \
-          ${GARAGE_BIN}/pip install --upgrade pip setuptools && \
-          ${GARAGE_BIN}/pip install dist/garage.tar.gz[all,dev] && \
-          ${GARAGE_BIN}/pylint --disable=all --enable=import-error garage'
-
-
-  verify_envs_pipenv:
-    name: Verify Pipenv Environment Installation
-    runs-on: ubuntu-latest
-    needs: build_docker_container
-    if: github.event_name == 'schedule'
-
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-      - name: Login to GitHub Package Registry
-        run: echo ${{ secrets.CI_REGISTRY_TOKEN }} | docker login docker.pkg.github.com -u ${CI_USER} --password-stdin
-      - name: Pull from cache (GitHub Package Registry)
-        run: docker pull "docker.pkg.github.com/${OWNER}/${DOCKER_CACHE_REPO}/${DOCKER_TAG}"
-      - name: Tag docker image
-        run: docker tag docker.pkg.github.com/${OWNER}/${DOCKER_CACHE_REPO}/${DOCKER_TAG} ${DOCKER_TAG}
-      - name: Verify Pipenv
-        run: |
-          docker run \
-          -e MJKEY \
-          --memory 6500m \
-          --memory-swap 6500m \
-          "${DOCKER_TAG}" \
-          /bin/bash -c \
-          "export PATH=\$PATH_NO_VENV && \
-          export VIRTUAL_ENV= && \
-          export PIPENV_MAX_RETRIES=2 && \
-          touch \${MJKEY_PATH} && \
-          pip3 install --upgrade pip setuptools && \
-          pip3 install pipenv && \
-          pipenv --python=3.6 && \
-          pipenv install dist/garage.tar.gz[all,dev] && \
-          pipenv graph && \
-          # pylint will verify all imports work
-          pipenv run pylint --disable=all --enable=import-error garage"
 
 
   deploy_to_pypi:
